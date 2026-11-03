@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+*.o
+*.skel.h
+vmlinux.h
+build/
+.DS_Store
+report/*.aux
+report/*.log
+report/*.out
+report/*.bbl
+report/*.blg
