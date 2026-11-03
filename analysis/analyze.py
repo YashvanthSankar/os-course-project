@@ -430,12 +430,16 @@ def featurize(b, cols, norm=True):
     return np.log1p(X.clip(lower=0).values)
 
 
-def thin(b, neg_frac=0.05, seed=0):
-    """Keep every tail request and a random neg_frac of the others, with
-    weight 1/neg_frac, so all metrics below stay unbiased (weighted)."""
-    keep = (b["is_tail"].values == 1) | (np.random.default_rng(seed).random(len(b)) < neg_frac)
+def thin(b, neg_frac=0.05, max_pos=20000, seed=0):
+    """Keep a random neg_frac of normal requests and up to max_pos tail
+    requests per run (all of them when fewer), each weighted by the inverse
+    of its sampling fraction, so all metrics below stay unbiased."""
+    y = b["is_tail"].values == 1
+    pos_frac = min(1.0, max_pos / max(1, int(y.sum())))
+    u = np.random.default_rng(seed).random(len(b))
+    keep = np.where(y, u < pos_frac, u < neg_frac)
     out = b[keep].copy()
-    out["w"] = np.where(out["is_tail"].values == 1, 1.0, 1.0 / neg_frac)
+    out["w"] = np.where(out["is_tail"].values == 1, 1.0 / pos_frac, 1.0 / neg_frac)
     return out
 
 

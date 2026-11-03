@@ -1,0 +1,10 @@
+\begin{table}[t]\centering\caption{Tracing overhead, closed loop, 5 runs each: median throughput (k\,req/s) and tracer CPU per request (BPF program run time + collector CPU, ns; excludes the uprobe trap cost). Run-to-run throughput spread is up to $\pm$17\%.}\label{tab:overhead}\footnotesize\setlength{\tabcolsep}{2.6pt}
+\begin{tabular}{lrrrrr}\toprule
+ & \multicolumn{2}{c}{cpu} & \multicolumn{2}{c}{kv} & \\
+mode & kreq/s & ns/req & kreq/s & ns/req & drops\\\midrule
+untraced & 28.2 & 0 & 86.8 & 0 & 0 \\
+counters only & 28.1 & 411 & 115.7 & 98 & 0 \\
+\sys{} shared & 29.0 & 220 & 112.1 & 122 & 0 \\
+uprobe windows & 27.5 & 10431 & 78.5 & 6405 & 0 \\
+per-event stream & 27.3 & 22946 & 68.5 & 7706 & 0 \\
+\bottomrule\end{tabular}\end{table}

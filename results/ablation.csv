@@ -1,0 +1,19 @@
+ablation,set,ap
+all aligned,"test (cpu+kv, unseen runs)",0.6454980793230236
+all aligned,held-out workload (net),0.42437875763218086
+− inherited,"test (cpu+kv, unseen runs)",0.4114662613039666
+− inherited,held-out workload (net),0.04844029819687679
+− scheduler,"test (cpu+kv, unseen runs)",0.44623690899038154
+− scheduler,held-out workload (net),0.13514383930508483
+− interrupt,"test (cpu+kv, unseen runs)",0.613284061846799
+− interrupt,held-out workload (net),0.38871888059216725
+− blocking,"test (cpu+kv, unseen runs)",0.6037505233288006
+− blocking,held-out workload (net),0.4349632840177693
+scheduler only,"test (cpu+kv, unseen runs)",0.561237450502313
+scheduler only,held-out workload (net),0.36401266497807455
+aggregate 5 ms,"test (cpu+kv, unseen runs)",0.784310884130225
+aggregate 5 ms,held-out workload (net),0.2781937503174756
+aggregate 20 ms,"test (cpu+kv, unseen runs)",0.6322255278254322
+aggregate 20 ms,held-out workload (net),0.24480243248990202
+aggregate 100 ms,"test (cpu+kv, unseen runs)",0.5770245923011053
+aggregate 100 ms,held-out workload (net),0.1065166601276196

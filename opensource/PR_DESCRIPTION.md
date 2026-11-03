@@ -1,7 +1,7 @@
 # libbpf-tools/runqlat: add -S/--split to separate wakeup and preemption latency
 
 **Target:** https://github.com/iovisor/bcc (libbpf-tools)
-**Status:** drafted and built locally; not yet submitted (submit from your own GitHub account)
+**Status:** drafted; not yet built or submitted (build and test with `build_and_test.sh`, then submit from your own GitHub account)
 
 ## Summary
 
@@ -52,17 +52,21 @@ namespace inode numbers, which do not have that guarantee, so `-S` with
 
 This came out of a course research project on attributing tail latency to
 OS events with eBPF. There, separating the two kinds of runqueue wait was
-needed to tell a co-located CPU hog (preemption waits grow) apart from
-wakeup-path delays (wakeup waits grow). In our controlled experiments
-(<fill in from results: e.g. "a CPU hog sharing the worker CPUs raised the
-p99 preemption wait by N× while the wakeup wait changed by M×">).
+needed to tell a co-located CPU hog apart from wakeup-path delays. In our
+controlled experiments (Linux 6.8, 5 runs per condition), a CPU hog sharing
+the worker CPUs raised the mean per-request wait *after preemption* by
+94–285× but the wait *after wakeup* only by 15–46×. Moving the workers off
+the hog's CPU cut the preemption wait to 0.2–0.3× of its previous value.
+The two waits respond differently to the same intervention, so a single
+merged histogram hides which one moved.
 
 ## Testing
 
-Built against upstream master `c398a9a7`, Ubuntu 24.04, kernel 6.8.0-142,
-arm64 (see `opensource/build_and_test.sh`):
+**Not run yet.** Run `opensource/build_and_test.sh` in the Linux VM before
+submitting, and paste its output here. The script builds against upstream
+master `c398a9a7` and checks:
 
-- `runqlat` without `-S`: output identical to before.
+- `runqlat` without `-S`: output unchanged.
 - `runqlat -S` with a CPU hog pinned to CPU 0: the preemption histogram is populated.
-- `runqlat -S -P` / `-S -L`: per-pid / per-tid histograms carry the cause suffix.
-- `runqlat -S --pidnss`: rejected.
+- `runqlat -S -P`: per-process histograms carry the cause suffix.
+- `runqlat -S --pidnss`: rejected with an error.

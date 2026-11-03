@@ -39,11 +39,13 @@ guest kernel cannot observe.
 accounting (preemption wait, wakeup delay, blocked time, interrupt time
 charged to the interrupted thread) in an mmap-able BPF map. The application
 reads it at request boundaries with plain memory loads, so no trap or ring
-buffer record is needed per request. Its overhead is \todo{X}\% versus
-\todo{Y}\% for uprobe-based windows (\S\ref{sec:overhead}).
+buffer record is needed per request. It costs \ovNsKvShm--\ovNsCpuShm{}\,ns
+of tracer CPU per request, 47--53$\times$ less than uprobe-based windows
+(\S\ref{sec:overhead}).
 \item A per-request latency decomposition that includes OS delay
 \emph{inherited} from queued-ahead requests, checked by an accounting
-identity that holds within 5\,$\mu$s for \todo{Z}\% of requests.
+identity that holds within 5\,$\mu$s for at least \valWithin\% of requests
+in every run.
 \item An evaluation over three workloads, three loads and five repetitions.
 It compares aligned per-request features against aggregate event counts and
 a queueing-only control, including a workload held out from training (H1),
