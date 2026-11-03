@@ -39,11 +39,12 @@ DURATION = float(os.environ.get("TL_DURATION", 15))
 WARMUP = 2
 REPS = int(os.environ.get("TL_REPS", 5))
 
-# Workload definitions. Service times were measured in the pilot run and the
-# rates set to roughly 30 / 50 / 70 % utilisation of three workers.
+# Workload definitions. Rates were chosen from a sweep on the quiet host so
+# the three loads span low to high utilisation without unbounded queueing
+# (cpu at 21k req/s, ~75 %, diverged with p99 > 75 ms and was excluded).
 WORKLOADS = {
     "cpu": {"args": ["-m", "cpu", "-w", "3", "-u", "100"],
-            "rates": {"low": 9000, "mid": 15000, "high": 21000}},
+            "rates": {"low": 7000, "mid": 12000, "high": 17000}},
     "kv":  {"args": ["-m", "kv", "-w", "3", "-u", "20", "-S", "200", "-L", "8"],
             "rates": {"low": 30000, "mid": 50000, "high": 70000}},
     "net": {"args": ["-m", "net", "-w", "3", "-u", "50"],

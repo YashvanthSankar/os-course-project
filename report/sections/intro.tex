@@ -1,0 +1,59 @@
+\section{Introduction}
+\label{sec:intro}
+
+Interactive services are judged by their slowest requests. When one user
+action fans out to many servers, the 99th-percentile latency of a single
+server becomes close to the median latency the user sees~\cite{dean2013tail}.
+Many of these slow requests are not caused by the application at all. The
+operating system delays them: a runnable thread waits behind another task,
+a burst of network softirqs steals the core in the middle of a request, a
+thread is migrated, or a write blocks on the storage stack. Li et
+al.~\cite{li2014tales} showed that such OS and hardware effects can stretch
+the tail of simple Linux servers by an order of magnitude beyond what
+queueing theory predicts.
+
+eBPF makes it possible to observe these events in production at low cost.
+Small verified programs attach to stable kernel tracepoints and summarize
+what they see in kernel maps~\cite{kernelbpf,vieira2020ebpf}. The standard
+eBPF tools, however, report \emph{aggregates}: a runqueue-latency histogram
+for a process, softirq time per CPU, counts per
+second~\cite{bcc,gregg2019bpf}. An operator who sees a p99 spike and a rise
+in context switches in the same minute still cannot say whether the
+switches \emph{caused} the slow requests, which requests they hit, or
+whether the requests were simply queued behind a load burst.
+
+\textbf{Problem.} Given a service with measurable per-request latency, we
+want to (i)~detect tail requests, (ii)~attach to each one the kernel events
+that delayed it, and (iii)~determine which kernel indicators actually
+separate tail requests from normal ones. The tracing itself must add less
+than 5\% overhead, and the method must not claim causality from correlation
+alone. Three things make this hard. Requests last tens of microseconds, so
+even two kernel traps per request are expensive. A request is often delayed
+by events that happened to the requests \emph{ahead} of it in the queue.
+And on a virtualized test machine, the host can stall vCPUs in ways the
+guest kernel cannot observe.
+
+\textbf{Contributions.}
+\begin{itemize}
+\item \sys{}, an eBPF pipeline that keeps per-thread scheduler and IRQ
+accounting (preemption wait, wakeup delay, blocked time, interrupt time
+charged to the interrupted thread) in an mmap-able BPF map. The application
+reads it at request boundaries with plain memory loads, so no trap or ring
+buffer record is needed per request. Its overhead is \todo{X}\% versus
+\todo{Y}\% for uprobe-based windows (\S\ref{sec:overhead}).
+\item A per-request latency decomposition that includes OS delay
+\emph{inherited} from queued-ahead requests, checked by an accounting
+identity that holds within 5\,$\mu$s for \todo{Z}\% of requests.
+\item An evaluation over three workloads, three loads and five repetitions.
+It compares aligned per-request features against aggregate event counts and
+a queueing-only control, including a workload held out from training (H1),
+and validates the attribution with one-at-a-time interventions (H2).
+\item Two practical outcomes: a noise gate that exposes hypervisor
+interference in VM-based latency studies, and an upstream patch to bcc's
+\texttt{runqlat} that separates wakeup latency from preemption latency.
+\end{itemize}
+
+\textbf{Hypotheses.} \textbf{H1}: kernel telemetry aligned to request
+windows separates tail requests from normal ones better than aggregate
+event counts. \textbf{H2}: each controlled intervention moves the matching
+component of the attribution, and only that component.
