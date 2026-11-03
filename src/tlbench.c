@@ -226,7 +226,8 @@ static inline void kwin_end(struct kwin *w, uint64_t id)
 	f->ok = 1;
 }
 
-/* splitmix64: small, seedable, good enough for arrivals and keys */
+/* splitmix64 (S. Vigna, public-domain reference algorithm; constants from
+ * the published version): small, seedable, good enough for arrivals and keys */
 static inline uint64_t sm64(uint64_t *s)
 {
 	uint64_t z = (*s += 0x9e3779b97f4a7c15ull);
