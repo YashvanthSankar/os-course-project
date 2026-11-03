@@ -6,6 +6,7 @@
   doi       = {10.1145/2670979.2670988}
 }
 
+
 @inproceedings{zhang2016treadmill,
   author    = {Yunqi Zhang and David Meisner and Jason Mars},
   title     = {Treadmill: Attributing the Source of Tail Latency through Precise Load Testing and Statistical Inference},
@@ -14,12 +15,14 @@
   pages     = {456--468}
 }
 
+
 @inproceedings{zhou2018wperf,
   author    = {Fang Zhou and Yifan Gan and Sixiang Ma and Yang Wang},
   title     = {{wPerf}: Generic Off-{CPU} Analysis to Identify Bottleneck Waiting Events},
   booktitle = {Proc. 13th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
   year      = {2018}
 }
+
 
 @inproceedings{lozi2016wasted,
   author    = {Jean-Pierre Lozi and Baptiste Lepers and Justin Funston and Fabien Gaud and Vivien Qu{\'e}ma and Alexandra Fedorova},
@@ -29,6 +32,7 @@
   doi       = {10.1145/2901318.2901326}
 }
 
+
 @inproceedings{fried2020caladan,
   author    = {Joshua Fried and Zhenyuan Ruan and Amy Ousterhout and Adam Belay},
   title     = {Caladan: Mitigating Interference at Microsecond Timescales},
@@ -37,6 +41,7 @@
   pages     = {281--297}
 }
 
+
 @inproceedings{zhang2023hindsight,
   author    = {Lei Zhang and Zhiqiang Xie and Vaastav Anand and Ymir Vigfusson and Jonathan Mace},
   title     = {The Benefit of Hindsight: Tracing Edge-Cases in Distributed Systems},
@@ -44,6 +49,7 @@
   year      = {2023},
   pages     = {321--339}
 }
+
 
 @article{dean2013tail,
   author  = {Jeffrey Dean and Luiz Andr{\'e} Barroso},
@@ -56,44 +62,6 @@
   doi     = {10.1145/2408776.2408794}
 }
 
-@article{vieira2020ebpf,
-  author  = {Marcos A. M. Vieira and Matheus S. Castanho and Racyus D. G. Pac{\'i}fico and Elerson R. S. Santos and Eduardo P. M. C{\^a}mara J{\'u}nior and Luiz F. M. Vieira},
-  title   = {Fast Packet Processing with {eBPF} and {XDP}: Concepts, Code, Challenges, and Applications},
-  journal = {ACM Computing Surveys},
-  volume  = {53},
-  number  = {1},
-  note    = {Article 16},
-  year    = {2020},
-  doi     = {10.1145/3371038}
-}
-
-@inproceedings{mccanne1993bpf,
-  author    = {Steven McCanne and Van Jacobson},
-  title     = {The {BSD} Packet Filter: A New Architecture for User-level Packet Capture},
-  booktitle = {Proc. USENIX Winter Conference},
-  year      = {1993}
-}
-
-@inproceedings{cantrill2004dtrace,
-  author    = {Bryan M. Cantrill and Michael W. Shapiro and Adam H. Leventhal},
-  title     = {Dynamic Instrumentation of Production Systems},
-  booktitle = {Proc. USENIX Annual Technical Conference (ATC)},
-  year      = {2004}
-}
-
-@inproceedings{mace2015pivot,
-  author    = {Jonathan Mace and Ryan Roelke and Rodrigo Fonseca},
-  title     = {Pivot Tracing: Dynamic Causal Monitoring for Distributed Systems},
-  booktitle = {Proc. 25th ACM Symposium on Operating Systems Principles (SOSP)},
-  year      = {2015}
-}
-
-@book{gregg2019bpf,
-  author    = {Brendan Gregg},
-  title     = {{BPF} Performance Tools: {Linux} System and Application Observability},
-  publisher = {Addison-Wesley},
-  year      = {2019}
-}
 
 @misc{kernelbpf,
   author       = {{Linux Kernel Documentation}},
@@ -102,12 +70,6 @@
   note         = {Accessed Nov. 2026}
 }
 
-@misc{ebpfdocs,
-  author       = {{eBPF Docs}},
-  title        = {{BPF} Program Types},
-  howpublished = {\url{https://docs.ebpf.io/linux/program-type/}},
-  note         = {Accessed Nov. 2026}
-}
 
 @misc{bcc,
   author       = {{IO Visor Project}},
@@ -116,12 +78,14 @@
   note         = {Accessed Nov. 2026}
 }
 
+
 @misc{netflix2024noisy,
   author       = {{Netflix Technology Blog}},
   title        = {Noisy Neighbor Detection with {eBPF}},
   howpublished = {\url{https://netflixtechblog.com/noisy-neighbor-detection-with-ebpf-64b1f4b3bbdd}},
   year         = {2024}
 }
+
 
 @inproceedings{humphries2021ghost,
   author    = {Jack Tigar Humphries and Neel Natu and Ashwin Chaugule and Ofir Weisse and Barret Rhoden and Josh Don and Luigi Rizzo and Oleg Rombakh and Paul Turner and Christos Kozyrakis},
@@ -132,31 +96,6 @@
   doi       = {10.1145/3477132.3483542}
 }
 
-@inproceedings{kaffes2019shinjuku,
-  author    = {Kostis Kaffes and Timothy Chong and Jack Tigar Humphries and Adam Belay and David Mazi{\`e}res and Christos Kozyrakis},
-  title     = {Shinjuku: Preemptive Scheduling for $\mu$second-scale Tail Latency},
-  booktitle = {Proc. 16th USENIX Symposium on Networked Systems Design and Implementation (NSDI)},
-  year      = {2019},
-  pages     = {345--360}
-}
-
-@misc{schedext,
-  author       = {{Linux Kernel Documentation}},
-  title        = {Extensible Scheduler Class (sched\_ext)},
-  howpublished = {\url{https://docs.kernel.org/scheduler/sched-ext.html}},
-  note         = {Accessed Nov. 2026}
-}
-
-@article{delimitrou2018amdahl,
-  author  = {Christina Delimitrou and Christos Kozyrakis},
-  title   = {{Amdahl's} Law for Tail Latency},
-  journal = {Communications of the ACM},
-  volume  = {61},
-  number  = {8},
-  pages   = {65--72},
-  year    = {2018},
-  doi     = {10.1145/3232559}
-}
 
 @misc{rhoden2022ghostbpf,
   author       = {Barret Rhoden},

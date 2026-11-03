@@ -14,10 +14,10 @@ queueing theory predicts.
 
 eBPF makes it possible to observe these events in production at low cost.
 Small verified programs attach to stable kernel tracepoints and summarize
-what they see in kernel maps~\cite{kernelbpf,vieira2020ebpf}. The standard
+what they see in kernel maps~\cite{kernelbpf}. The standard
 eBPF tools, however, report \emph{aggregates}: a runqueue-latency histogram
 for a process, softirq time per CPU, counts per
-second~\cite{bcc,gregg2019bpf}. An operator who sees a p99 spike and a rise
+second~\cite{bcc}. An operator who sees a p99 spike and a rise
 in context switches in the same minute still cannot say whether the
 switches \emph{caused} the slow requests, which requests they hit, or
 whether the requests were simply queued behind a load burst.
