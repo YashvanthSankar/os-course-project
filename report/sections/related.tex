@@ -3,65 +3,54 @@
 
 \textbf{Sources of tail latency.} Dean and Barroso~\cite{dean2013tail}
 showed that, in fan-out services, the latency tail of individual servers
-sets the latency users see. Delimitrou and Kozyrakis~\cite{delimitrou2018amdahl} extended Amdahl's
-law to tail latency with queueing models. They showed that a tail target,
-unlike an average target, shifts the best design toward larger
-cores, so what drives the tail directly affects how machines are
-provisioned. Li et al.~\cite{li2014tales} measured where the
-excess tail of null-RPC, Memcached and Nginx servers on Linux comes from:
-background processes, FIFO-violating scheduling, the mapping of NIC
-interrupts and threads to cores, and power saving. Each source was isolated
-by changing the configuration and rerunning. Treadmill~\cite{zhang2016treadmill}
-showed that load testers distort tail measurements (client-side queueing,
-closed-loop arrivals, wrong aggregation) and used quantile regression over
-many runs to attribute tail changes to hardware and software factors.
-Both attribute the tail to a \emph{configuration}, offline and over many
-runs, not to individual requests while the system runs.
+sets the latency users see, and that rare stalls which hardly matter on one
+machine dominate at scale. Li et al.~\cite{li2014tales} is the study
+closest to ours. They compared null-RPC, Memcached and Nginx servers on
+Linux with an ideal queueing model and traced the excess tail to background
+processes, non-FIFO scheduling, how connections are bound to threads, where
+NIC interrupts land relative to server threads, and power saving. Each cause
+was confirmed by changing one setting and rerunning; our one-at-a-time
+interventions follow the same idea. Treadmill~\cite{zhang2016treadmill}
+showed that load testers distort tails through client-side queueing,
+closed-loop arrivals and wrong aggregation. It then attributed tail changes
+to hardware and software factors with quantile regression over many runs.
+Its pitfalls changed our own harness (\S\ref{sec:method}). Both works
+attribute the tail to a \emph{configuration}, offline and across runs. They
+do not say which OS events delayed a given request while the system runs.
 
-\textbf{Waiting and scheduler analysis.} wPerf~\cite{zhou2018wperf} traces
-waiting events between threads and builds wait-for graphs to find events
-that cap throughput, with about 5\% recording overhead. Lozi et
+\textbf{Waiting and scheduler analysis.} wPerf~\cite{zhou2018wperf} records
+waiting events between threads and builds wait-for graphs to find the
+events that cap throughput, at about 5\% overhead. Lozi et
 al.~\cite{lozi2016wasted} found Linux load-balancing bugs that left cores
-idle while threads waited in runqueues. These works target throughput and
-scheduler correctness. They do not ask which OS events delayed a
-particular slow request.
+idle while threads waited in runqueues, a direct case of the scheduler
+creating delay. Both target throughput or scheduler correctness, not single
+slow requests.
 
-\textbf{Kernel tracing with eBPF.} Safe in-kernel instrumentation goes back
-to BPF~\cite{mccanne1993bpf} and DTrace~\cite{cantrill2004dtrace}. eBPF adds
-a verifier, maps and ring buffers~\cite{kernelbpf,ebpfdocs,vieira2020ebpf}.
-The BCC tools~\cite{bcc,gregg2019bpf} report runqueue latency
-(\texttt{runqlat}, \texttt{runqslower}), softirq time and off-CPU time as
-histograms per CPU, process or cgroup. Netflix uses the same runqueue
-signal per container to detect noisy neighbours~\cite{netflix2024noisy}.
-Their output is aggregated over time or over a task, so it cannot be joined
-with the latency of a single request. \texttt{runqlat} also folds wakeup
-and preemption waits into one histogram. Recording every scheduler event instead,
-as \texttt{perf sched} or ftrace do, is complete but expensive: our own
+\textbf{eBPF observability.} The kernel BPF interface~\cite{kernelbpf}
+offers verified programs on stable tracepoints, maps and ring buffers. The
+bcc tools~\cite{bcc} build on it: \texttt{runqlat} reports runqueue latency
+as a histogram per CPU, process or cgroup, and similar tools cover softirq
+and off-CPU time. Netflix uses runqueue latency per container in production
+to detect noisy neighbours~\cite{netflix2024noisy}. All of these aggregate
+over time or over a task, so their output cannot be joined with the latency
+of one request, and \texttt{runqlat} merges wakeup and preemption waits
+into one histogram. Recording every scheduler event instead, as
+\texttt{perf sched} or ftrace do, is complete but expensive: our own
 per-event streaming mode costs 63--104$\times$ more tracer CPU per request
 than in-kernel accounting (\S\ref{sec:overhead}).
 
-\textbf{Request-level tracing and mitigation.} Pivot
-Tracing~\cite{mace2015pivot} and Hindsight~\cite{zhang2023hindsight}
-follow requests across components. Hindsight keeps cheap trace data and
-retrieves it only for edge cases such as slow requests. Their spans stop at
-the application boundary, so scheduler and interrupt time inside a span
-cannot be seen. Caladan~\cite{fried2020caladan} shows that fast
-queueing-delay signals can drive core reallocation at microsecond scale,
-but it replaces the Linux scheduler with its own runtime.
-
-\textbf{Programmable scheduling.} A second line of work changes the
-scheduler itself to cut tail latency. Shinjuku~\cite{kaffes2019shinjuku}
-preempts requests every few microseconds so short requests no longer wait
-behind long ones. ghOSt~\cite{humphries2021ghost} delegates Linux
-scheduling policy to user-space agents. Its BPF extension already shares a
-per-thread status table with user space through an mmap-able BPF
-array~\cite{rhoden2022ghostbpf}; we reuse that mechanism for a different
-purpose, per-request latency attribution. \texttt{sched\_ext}~\cite{schedext}
-now lets such policies be written as BPF programs in the mainline kernel.
-These systems make the policy flexible, but none of them says \emph{which}
-OS mechanism delayed a given request. Without that, an operator cannot tell
-whether a new policy, a different CPU placement or an interrupt-affinity
-change is the right fix.
+\textbf{Request tracing and scheduling.} Hindsight~\cite{zhang2023hindsight}
+keeps cheap trace data and retrieves it only for edge cases such as slow
+requests, but its spans stop at the application boundary, so scheduler and
+interrupt time inside a span stay invisible. Caladan~\cite{fried2020caladan}
+uses queueing delay as a fast control signal to reallocate cores at
+microsecond scale. Our finding that queue length is the strongest tail
+predictor agrees with that choice, but Caladan replaces the Linux scheduler
+with its own runtime. ghOSt~\cite{humphries2021ghost} delegates Linux
+scheduling policy to user space, and its BPF extension shares a per-thread
+status table with user-space agents through an mmap-able BPF
+array~\cite{rhoden2022ghostbpf}. We reuse that mechanism for a different
+purpose: attributing latency rather than making scheduling decisions.
 
 \textbf{Gaps.} We found no low-overhead mechanism that, on an unmodified
 Linux kernel, tags each request with the scheduler and interrupt delay it
