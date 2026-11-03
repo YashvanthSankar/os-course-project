@@ -53,7 +53,10 @@ but it replaces the Linux scheduler with its own runtime.
 scheduler itself to cut tail latency. Shinjuku~\cite{kaffes2019shinjuku}
 preempts requests every few microseconds so short requests no longer wait
 behind long ones. ghOSt~\cite{humphries2021ghost} delegates Linux
-scheduling policy to user-space agents. \texttt{sched\_ext}~\cite{schedext}
+scheduling policy to user-space agents. Its BPF extension already shares a
+per-thread status table with user space through an mmap-able BPF
+array~\cite{rhoden2022ghostbpf}; we reuse that mechanism for a different
+purpose, per-request latency attribution. \texttt{sched\_ext}~\cite{schedext}
 now lets such policies be written as BPF programs in the mainline kernel.
 These systems make the policy flexible, but none of them says \emph{which}
 OS mechanism delayed a given request. Without that, an operator cannot tell

@@ -427,3 +427,15 @@ Brendan Gregg's *BPF Performance Tools* (2019), and bcc's `runqlat`,
 10. **Methodology mistakes we caught.** A sleeping load generator created fake tails (fixed by spinning). A single calibration run gave thresholds that were 100× off (fixed with the median of 5). The first validation was circular (fixed by reading the kernel's own on-CPU clock). A first version of inherited delay leaked queue length (fixed with a 10 µs floor and the queue-length control). These are worth mentioning in a viva: they show the results were checked, not just produced.
 
 **Viva questions to practise:** Why is accuracy useless here? Why split by run? What does the queue-length control tell you? Why did aggregates fail on net? What would you do with bare metal and more time?
+
+## Part 10: What is new here, and what is not (say this honestly in the viva)
+
+**Not new:** tracing the scheduler with eBPF; runqueue-latency tools (bcc `runqlat`, Netflix); mmap-able BPF maps (Linux 5.5); even a kernel-updated per-thread table that user space reads through an mmap-able BPF array (Google's ghost-bpf, Linux Plumbers 2022, which uses it for *scheduling*).
+
+**New, as far as our literature search found:**
+1. Using that per-thread table for **per-request latency attribution**: the app snapshots its slot at request start and end, giving a per-request breakdown (preemption / wakeup / IRQ / blocked) at ~120–220 ns per request, 47–53× cheaper than uprobes.
+2. **Inherited OS delay**: a request is charged for OS delay suffered by the requests queued ahead of it. Without it, held-out PR-AUC drops from 0.42 to 0.05.
+3. **Empirical findings**: the queue-length control beats kernel features in-distribution; aligned telemetry generalizes and aggregates don't; 57% of tails have no OS signal; 7 of 9 intervention signatures held.
+4. **bcc `runqlat -S`**: splits wakeup and preemption latency (no existing PR found; still to be built, tested and submitted).
+
+Say "as far as our search found", never "nobody has ever done this".
