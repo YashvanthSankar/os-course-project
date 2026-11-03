@@ -8,7 +8,7 @@ B       := build
 CFLAGS  := -O2 -g -Wall -Wextra -Wno-unused-parameter
 LIBS    := -lbpf -lelf -lz
 
-all: $(B)/tlbench $(B)/tlat $(B)/stressor
+all: $(B)/tlbench $(B)/tlat $(B)/stressor $(B)/hiccup
 
 $(B):
 	mkdir -p $(B)
@@ -26,10 +26,13 @@ $(B)/tlat: src/tlat.c src/tlat.h $(B)/tlat.skel.h
 	$(CC) $(CFLAGS) -I$(B) -Isrc $< -o $@ $(LIBS)
 
 # -fno-omit-frame-pointer keeps the uprobe anchors easy to inspect
-$(B)/tlbench: src/tlbench.c | $(B)
-	$(CC) $(CFLAGS) -fno-omit-frame-pointer $< -o $@ -lpthread -lm
+$(B)/tlbench: src/tlbench.c src/tlat.h | $(B)
+	$(CC) $(CFLAGS) -Isrc -fno-omit-frame-pointer $< -o $@ -lpthread -lm
 
 $(B)/stressor: src/stressor.c | $(B)
+	$(CC) $(CFLAGS) $< -o $@ -lpthread
+
+$(B)/hiccup: src/hiccup.c | $(B)
 	$(CC) $(CFLAGS) $< -o $@ -lpthread
 
 clean:

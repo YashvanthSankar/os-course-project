@@ -88,20 +88,34 @@ def load_run(d, thr_map=None):
     meta = read_json(d / "meta.json")
     b = pd.read_csv(d / "bench.csv")
     b = b[b["warm"] == 0].copy()
-    b["lat"] = b["t_done"] - b["t_arr"]
+    # Latency is measured from the moment the request was actually injected.
+    # The gap between scheduled and actual injection is load-generator
+    # lateness: a property of the measurement harness, reported separately.
+    b["lat"] = b["t_done"] - b["t_enq"]
+    b["genlate"] = (b["t_enq"] - b["t_arr"]).clip(lower=0)
     info = dict(cond)
+    info.update({"genlate_p99": pct(b["genlate"], 99) if len(b) else float("nan"),
+                 "noise_before": cond.get("noise_before_pct"), "noise_after": cond.get("noise_after_pct")})
     info.update({"throughput": meta["throughput"], "cpu_s": meta["cpu_s"],
                  "wall_s": meta["wall_s"], "measured": meta["measured"],
                  "overflow": meta["queue_overflow"], "maxrss_kb": meta["maxrss_kb"]})
     if (d / "tlat.json").exists():
         info.update({f"tl_{k}": v for k, v in read_json(d / "tlat.json").items()})
-    if (d / "tlat.req.csv").exists():
+    have_k = False
+    if "kvalid" in b.columns:          # trap-free shared-counter mode
+        info["coverage"] = float(b["kvalid"].mean())
+        b = b[b["kvalid"] == 1].copy()
+        b["oncpu_ns"] = ((b["t_end"] - b["t_start"]) - b["runq_ns"] - b["wake_ns"]
+                         - b["blocked_ns"]).clip(lower=0)
+        have_k = True
+    elif (d / "tlat.req.csv").exists():  # uprobe mode
         k = pd.read_csv(d / "tlat.req.csv")
         b = b.merge(k, on="id", how="left")
         info["coverage"] = float(b["runq_ns"].notna().mean())
         b = b[b["runq_ns"].notna()].copy()
-        if (d / "tlat.agg.csv").exists():
-            b = attach_agg(b, load_agg(d / "tlat.agg.csv"))
+        have_k = True
+    if have_k and (d / "tlat.agg.csv").exists():
+        b = attach_agg(b, load_agg(d / "tlat.agg.csv"))
     if thr_map is not None:
         key = (cond["workload"], cond["load"])
         if key in thr_map:
@@ -151,7 +165,8 @@ def stage_a(raw, out, res):
                          p50=pct(lat, 50), p95=pct(lat, 95), p99=pct(lat, 99),
                          p999=pct(lat, 99.9), thr=info["throughput"],
                          cpu_util=info["cpu_s"] / info["wall_s"] / 3.0,
-                         overflow=info["overflow"]))
+                         overflow=info["overflow"], genlate_p99=info["genlate_p99"],
+                         noise=info.get("noise_before")))
         key = (info["workload"], info["load"], info["tracer"])
         curves.setdefault(key, []).append(np.sort(lat))
     df = pd.DataFrame(rows)
@@ -173,9 +188,9 @@ def stage_a(raw, out, res):
     # latency inflation from tracing (open loop)
     infl = []
     for (wl, ld), g in sm.groupby(["workload", "load"]):
-        if set(g.tracer) >= {"none", "attrib"}:
+        if set(g.tracer) >= {"none", "shm"}:
             n0 = g[g.tracer == "none"].iloc[0]
-            n1 = g[g.tracer == "attrib"].iloc[0]
+            n1 = g[g.tracer == "shm"].iloc[0]
             infl.append(dict(workload=wl, load=ld,
                              p50_infl=n1.p50 / n0.p50 - 1, p99_infl=n1.p99 / n0.p99 - 1))
     res["latency_inflation"] = infl
@@ -185,7 +200,7 @@ def stage_a(raw, out, res):
     fig, axs = plt.subplots(1, 3, figsize=(7.0, 2.0), sharey=True)
     for ax, wl in zip(axs, ["cpu", "kv", "net"]):
         for li, ld in enumerate(order):
-            for tr, ls in (("none", "-"), ("attrib", "--")):
+            for tr, ls in (("none", "-"), ("shm", "--")):
                 cs = curves.get((wl, ld, tr))
                 if not cs:
                     continue
@@ -195,7 +210,7 @@ def stage_a(raw, out, res):
                 sel = np.unique(np.geomspace(1, len(x), 400).astype(int) - 1)
                 ax.plot(x[sel] / 1e3, np.maximum(y[sel], 1e-6), ls, lw=1,
                         color=plt.cm.viridis(0.15 + 0.35 * li),
-                        label=f"{ld}{' traced' if tr == 'attrib' else ''}")
+                        label=f"{ld}{' traced' if tr == 'shm' else ''}")
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.set_ylim(1e-5, 1)
@@ -251,7 +266,7 @@ def stage_b(raw, out, res):
                               for _, r in op.iterrows()]
 
     # Figure 2
-    modes = ["count", "attrib", "stream"]
+    modes = ["count", "shm", "attrib", "stream"]
     fig, ax = plt.subplots(figsize=(3.4, 1.9))
     w = 0.38
     for i, wl in enumerate(["cpu", "kv"]):
@@ -262,9 +277,9 @@ def stage_b(raw, out, res):
         x = np.arange(len(modes)) + (i - 0.5) * w
         ax.bar(x, ys, w, yerr=[lo, hi], capsize=2, color=COL[wl], label=wl, alpha=0.85)
     ax.axhline(5, color="k", ls=":", lw=0.8)
-    ax.text(2.45, 5.2, "5% budget", fontsize=6, ha="right")
+    ax.text(len(modes) - 0.55, 5.4, "5% budget", fontsize=6, ha="right")
     ax.set_xticks(range(len(modes)))
-    ax.set_xticklabels(["counters\nonly", "per-request\n(in-kernel)", "per-event\nstreaming"])
+    ax.set_xticklabels(["counters\nonly", "shared\ncounters", "uprobe\nwindows", "per-event\nstream"])
     ax.set_ylabel("throughput loss (%)")
     ax.legend(frameon=False)
     ax.grid(axis="y", alpha=0.3, lw=0.3)
@@ -277,7 +292,7 @@ def stage_b(raw, out, res):
 def components(b):
     """Per-request latency decomposition (ns)."""
     c = pd.DataFrame(index=b.index)
-    pre = (b["t_start"] - b["t_arr"]).clip(lower=0)
+    pre = (b["t_start"] - b["t_enq"]).clip(lower=0)
     c["sched"] = b["pre_wake_ns"] + b["runq_ns"] + b["wake_ns"]
     c["irq"] = b["softirq_ns"] + b["hardirq_ns"]
     c["blocked"] = b["blocked_ns"]
@@ -659,7 +674,7 @@ def main():
     for exp in ("main", "interv"):
         for d in runs(a.raw, exp):
             cond = read_json(d / "cond.json")
-            if cond["tracer"] != "attrib":
+            if cond["tracer"] != "shm":
                 continue
             b, info = load_run(d, thr)
             if "tail" not in b or not len(b):
@@ -669,7 +684,7 @@ def main():
                      drops=info.get("tl_rb_drops"))
             val.append(v)
             b["run_id"] = f"{exp}/{info['run_id']}"
-            keep = (["id", "lat", "thr", "tail", "t_arr", "t_start", "t_end", "t_done", "oncpu_ns",
+            keep = (["id", "lat", "thr", "tail", "t_arr", "t_enq", "t_start", "t_end", "t_done", "oncpu_ns",
                      "workload", "load", "stressor", "rep", "run_id"] + ALIGNED +
                     [c for c in b.columns if "@" in c])
             frames.append(b[keep])

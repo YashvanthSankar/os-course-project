@@ -38,7 +38,9 @@ static struct {
 	int interval_ms;
 	const char *ready_file;
 	int cpu;
-} A = { .mode = MODE_ATTRIB, .prefix = "tlat", .interval_ms = 10, .cpu = -1 };
+	const char *pin;
+} A = { .mode = MODE_ATTRIB, .prefix = "tlat", .interval_ms = 10, .cpu = -1,
+	.pin = "/sys/fs/bpf/tlat_slots" };
 
 static FILE *f_req, *f_agg, *f_raw;
 static unsigned long long n_req, n_raw, raw_bytes;
@@ -156,25 +158,28 @@ static int libbpf_print(enum libbpf_print_level lvl, const char *fmt, va_list ap
 int main(int argc, char **argv)
 {
 	int opt;
-	while ((opt = getopt(argc, argv, "p:b:m:o:i:R:C:")) != -1) {
+	while ((opt = getopt(argc, argv, "p:b:m:o:i:R:C:K:")) != -1) {
 		switch (opt) {
 		case 'p': A.pid = atoi(optarg); break;
 		case 'b': A.binary = optarg; break;
 		case 'm':
 			A.mode = !strcmp(optarg, "count") ? MODE_COUNT :
-				 !strcmp(optarg, "stream") ? MODE_STREAM : MODE_ATTRIB;
+				 !strcmp(optarg, "stream") ? MODE_STREAM :
+				 !strcmp(optarg, "shm") ? MODE_SHM : MODE_ATTRIB;
 			break;
 		case 'o': A.prefix = optarg; break;
 		case 'i': A.interval_ms = atoi(optarg); break;
 		case 'R': A.ready_file = optarg; break;
 		case 'C': A.cpu = atoi(optarg); break;
+		case 'K': A.pin = optarg; break;
 		default:
 			fprintf(stderr, "usage: %s -p PID -b BINARY [-m count|attrib|stream] "
-					"[-o PREFIX] [-i MS] [-R READY] [-C CPU]\n", argv[0]);
+					"[-o PREFIX] [-i MS] [-R READY] [-C CPU] [-K PIN]\n", argv[0]);
 			return 2;
 		}
 	}
-	if (!A.pid || (A.mode != MODE_COUNT && !A.binary)) {
+	int need_uprobes = A.mode == MODE_ATTRIB || A.mode == MODE_STREAM;
+	if (!A.pid || (need_uprobes && !A.binary)) {
 		fprintf(stderr, "need -p PID and -b BINARY\n");
 		return 2;
 	}
@@ -191,7 +196,7 @@ int main(int argc, char **argv)
 	if (!skel) { fprintf(stderr, "open failed\n"); return 1; }
 	skel->rodata->target_tgid = A.pid;
 	skel->rodata->mode = A.mode;
-	if (A.mode == MODE_COUNT) {
+	if (!need_uprobes) {
 		bpf_program__set_autoload(skel->progs.req_begin, false);
 		bpf_program__set_autoload(skel->progs.req_end, false);
 		/* the ring buffer is unused; keep it tiny */
@@ -200,7 +205,14 @@ int main(int argc, char **argv)
 	if (tlat_bpf__load(skel)) { fprintf(stderr, "load failed\n"); return 1; }
 	if (tlat_bpf__attach(skel)) { fprintf(stderr, "attach failed\n"); return 1; }
 
-	if (A.mode != MODE_COUNT) {
+	if (A.mode == MODE_SHM) {
+		unlink(A.pin);
+		if (bpf_map__pin(skel->maps.slots, A.pin)) {
+			fprintf(stderr, "pin %s failed: %s\n", A.pin, strerror(errno));
+			return 1;
+		}
+	}
+	if (need_uprobes) {
 		LIBBPF_OPTS(bpf_uprobe_opts, ob, .func_name = "tl_req_begin");
 		LIBBPF_OPTS(bpf_uprobe_opts, oe, .func_name = "tl_req_end");
 		skel->links.req_begin = bpf_program__attach_uprobe_opts(
@@ -237,7 +249,7 @@ int main(int argc, char **argv)
 	}
 
 	struct ring_buffer *rb = NULL;
-	if (A.mode != MODE_COUNT) {
+	if (need_uprobes) {
 		rb = ring_buffer__new(bpf_map__fd(skel->maps.rb), handle_rb, NULL, NULL);
 		if (!rb) { fprintf(stderr, "ring buffer failed\n"); return 1; }
 	}
@@ -261,11 +273,17 @@ int main(int argc, char **argv)
 
 	while (!stopping) {
 		unsigned long long n = mono_ns();
-		int to = next_tick > n ? (int)((next_tick - n) / 1000000) : 0;
-		if (rb)
-			ring_buffer__poll(rb, to);
-		else if (to)
-			usleep(to * 1000);
+		if (next_tick > n) {
+			if (rb) {
+				/* round up so we never spin on a 0 ms timeout */
+				int to = (int)((next_tick - n + 999999) / 1000000);
+				ring_buffer__poll(rb, to);
+			} else {
+				struct timespec ts = { .tv_sec = next_tick / 1000000000ull,
+						       .tv_nsec = next_tick % 1000000000ull };
+				clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL);
+			}
+		}
 		n = mono_ns();
 		if (n >= next_tick) {
 			read_counters(gfd, &cur);
@@ -309,15 +327,19 @@ int main(int argc, char **argv)
 		"{\"mode\":%d,\"wall_s\":%.3f,\"req_records\":%llu,\"raw_events\":%llu,"
 		"\"raw_bytes\":%llu,\"rb_drops\":%llu,\"rb_submitted\":%llu,"
 		"\"collector_user_s\":%.4f,\"collector_sys_s\":%.4f,\"collector_maxrss_kb\":%ld,"
-		"\"bpf_run_ns\":%llu,\"bpf_run_cnt\":%llu,\"map_bytes_max\":%zu}\n",
+		"\"bpf_run_ns\":%llu,\"bpf_run_cnt\":%llu,\"map_bytes_max\":%zu,"
+		"\"slot_collisions\":%llu}\n",
 		A.mode, (t_end - t_start) / 1e9, n_req, n_raw, raw_bytes,
 		(unsigned long long)cur.rb_drops, (unsigned long long)cur.rb_records,
-		ucpu, scpu, ru1.ru_maxrss, run_ns, run_cnt, map_bytes);
+		ucpu, scpu, ru1.ru_maxrss, run_ns, run_cnt, map_bytes,
+		(unsigned long long)cur.slot_collisions);
 	fclose(fj);
 	if (f_req) fclose(f_req);
 	if (f_raw) fclose(f_raw);
 	fclose(f_agg);
 	ring_buffer__free(rb);
+	if (A.mode == MODE_SHM)
+		unlink(A.pin);
 	tlat_bpf__destroy(skel);
 	fprintf(stderr, "tlat: %llu requests, %llu raw events, %llu drops\n",
 		n_req, n_raw, (unsigned long long)cur.rb_drops);
