@@ -39,3 +39,12 @@ clean:
 	rm -rf $(B)
 
 .PHONY: all clean
+
+# Submission bundles (run on the host after results/ and report/ are final)
+package:
+	rm -rf dist && mkdir -p dist
+	cd report && zip -qr ../dist/report_latex.zip main.tex refs.bib sections figures
+	zip -qr dist/project_code.zip Makefile README.md src scripts analysis docs opensource results -x '*.pyc' -x '*/__pycache__/*'
+	@echo "dist/report_latex.zip and dist/project_code.zip created"
+
+.PHONY: package
