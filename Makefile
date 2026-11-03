@@ -1,0 +1,38 @@
+# Build everything into build/. Run inside the Linux VM (see docs/REPRODUCE.md).
+CC      ?= gcc
+CLANG   ?= clang
+BPFTOOL ?= bpftool
+ARCH    := $(shell uname -m | sed -e 's/x86_64/x86/' -e 's/aarch64/arm64/')
+B       := build
+
+CFLAGS  := -O2 -g -Wall -Wextra -Wno-unused-parameter
+LIBS    := -lbpf -lelf -lz
+
+all: $(B)/tlbench $(B)/tlat $(B)/stressor
+
+$(B):
+	mkdir -p $(B)
+
+$(B)/vmlinux.h: | $(B)
+	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $@
+
+$(B)/tlat.bpf.o: src/tlat.bpf.c src/tlat.h $(B)/vmlinux.h
+	$(CLANG) -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH) -I$(B) -Isrc -c $< -o $@
+
+$(B)/tlat.skel.h: $(B)/tlat.bpf.o
+	$(BPFTOOL) gen skeleton $< > $@
+
+$(B)/tlat: src/tlat.c src/tlat.h $(B)/tlat.skel.h
+	$(CC) $(CFLAGS) -I$(B) -Isrc $< -o $@ $(LIBS)
+
+# -fno-omit-frame-pointer keeps the uprobe anchors easy to inspect
+$(B)/tlbench: src/tlbench.c | $(B)
+	$(CC) $(CFLAGS) -fno-omit-frame-pointer $< -o $@ -lpthread -lm
+
+$(B)/stressor: src/stressor.c | $(B)
+	$(CC) $(CFLAGS) $< -o $@ -lpthread
+
+clean:
+	rm -rf $(B)
+
+.PHONY: all clean
