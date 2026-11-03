@@ -509,6 +509,19 @@ def stage_d(frames, out, res):
         results.append(r)
         curves[("aggregate@20ms", "rule", sname)] = precision_recall_curve(
             sdf.is_tail.values, p, sample_weight=sdf.w.values)[:2]
+    # sensitivity: evaluate only on runs whose pre-run platform noise was <= 3 %
+    sens = []
+    for fs in ("aligned", "aggregate@20ms", "queue-length proxy (control)", "control + aligned",
+               "control + aggregate"):
+        m = models_cache[fs]["forest"]
+        for sname, sdf in sets.items():
+            q = sdf[sdf.noise <= 3.0]
+            if len(q) and q.is_tail.sum():
+                p = m.predict_proba(featurize(q, feature_sets[fs]))[:, 1]
+                sens.append(dict(features=fs, set=sname, runs=int(q.run_id.nunique()),
+                                 ap=float(average_precision_score(q.is_tail.values, p,
+                                                                  sample_weight=q.w.values))))
+    res["sensitivity_quiet_runs"] = sens
     det = pd.DataFrame(results)
     det.to_csv(out / "detection.csv", index=False)
     res["detection"] = det.to_dict(orient="records")
@@ -605,6 +618,21 @@ def attribute(b):
     return share, ex
 
 
+TOUCH = ["sched", "irq", "blocked"]
+
+
+def touched(b):
+    """Which OS event types touched each request: >= SIG_FLOOR_NS of that
+    delay in its own window, or inherited from requests queued ahead of it."""
+    own = {"sched": b.pre_wake_ns + b.runq_ns + b.wake_ns,
+           "irq": b.softirq_ns + b.hardirq_ns,
+           "blocked": b.blocked_ns}
+    inh = {"sched": b.inh_sched_ns, "irq": b.inh_irq_ns, "blocked": b.inh_blocked_ns}
+    t = pd.DataFrame({k: (own[k] >= SIG_FLOOR_NS) | (inh[k] > 0) for k in TOUCH})
+    t["none"] = ~t[TOUCH].any(axis=1)
+    return t
+
+
 def stage_e(raw, thr, out, res):
     rows = []
     sig = {}
@@ -621,8 +649,20 @@ def stage_e(raw, thr, out, res):
                  sched_med=float(comp.sched.median()), sched_p99=pct(comp.sched, 99),
                  irq_p99=pct(comp.irq, 99), blocked_p99=pct(comp.blocked, 99),
                  nmigr_mean=float(b.nmigr.mean()), nivcsw_mean=float(b.nivcsw.mean()),
-                 softirq_mean=float(b.softirq_ns.mean()))
+                 softirq_mean=float(b.softirq_ns.mean()),
+                 # primary H2 signal: mean own-window delay per request, by category
+                 own_sched_mean=float((b.pre_wake_ns + b.runq_ns + b.wake_ns).mean()),
+                 own_runq_mean=float(b.runq_ns.mean()),
+                 own_wake_mean=float((b.pre_wake_ns + b.wake_ns).mean()),
+                 own_irq_mean=float((b.softirq_ns + b.hardirq_ns).mean()),
+                 own_blocked_mean=float(b.blocked_ns.mean()))
         r.update({f"share_{k}": float(v) for k, v in share.items()})
+        tch = touched(b)
+        tails = b.is_tail.values == 1
+        normal = ~tails
+        for k in TOUCH + ["none"]:
+            r[f"touch_{k}"] = float(tch[k].values[tails].mean()) if tails.any() else float("nan")
+            r[f"touchn_{k}"] = float(tch[k].values[normal].mean()) if normal.any() else float("nan")
         rows.append(r)
     df = pd.DataFrame(rows)
     if df.empty:
@@ -634,8 +674,8 @@ def stage_e(raw, thr, out, res):
 
     # H2 tests: does the predicted signature move vs. the no-stressor control?
     tests = []
-    expect = {"cpuhog": ("sched_p99", "greater"), "netflood": ("irq_p99", "greater"),
-              "io": ("blocked_p99", "greater"), "hog0-moved": ("sched_p99", "less")}
+    expect = {"cpuhog": ("own_sched_mean", "greater"), "netflood": ("own_irq_mean", "greater"),
+              "io": ("own_blocked_mean", "greater"), "hog0-moved": ("own_sched_mean", "less")}
     for wl in df.workload.unique():
         for cond, (metric, alt) in expect.items():
             ctrl_name = "hog0-shared" if cond == "hog0-moved" else "none"
@@ -645,13 +685,22 @@ def stage_e(raw, thr, out, res):
                 u, p = mannwhitneyu(a, c, alternative=alt)
                 # also check that the *other* signals did not move the same way
                 others = {}
-                for m2 in ("sched_p99", "irq_p99", "blocked_p99"):
+                for m2 in ("own_sched_mean", "own_irq_mean", "own_blocked_mean"):
                     if m2 == metric:
                         continue
-                    others[m2] = float(df[(df.workload == wl) & (df.cond == f"{wl}-{cond}")][m2].median() /
-                                       max(1.0, df[(df.workload == wl) & (df.cond == f"{wl}-{ctrl_name}")][m2].median()))
+                    a2 = df[(df.workload == wl) & (df.cond == f"{wl}-{cond}")][m2]
+                    c2 = df[(df.workload == wl) & (df.cond == f"{wl}-{ctrl_name}")][m2]
+                    others[m2] = {"interv": float(a2.median()), "control": float(c2.median()),
+                                  "p_two_sided": float(mannwhitneyu(a2, c2).pvalue)}
+                mag = {"cpuhog": "touch_sched", "netflood": "touch_irq", "io": "touch_blocked",
+                       "hog0-moved": "touch_sched"}[cond]
+                am = df[(df.workload == wl) & (df.cond == f"{wl}-{cond}")][mag]
+                cm = df[(df.workload == wl) & (df.cond == f"{wl}-{ctrl_name}")][mag]
                 tests.append(dict(workload=wl, intervention=cond, control=ctrl_name, metric=metric,
-                                  ratio=float(a.median() / max(1.0, c.median())), p=float(p),
+                                  interv=float(a.median()), control_val=float(c.median()), p=float(p),
+                                  touched_metric=mag, touched_interv=float(am.median()),
+                                  touched_control=float(cm.median()),
+                                  touched_p=float(mannwhitneyu(am, cm, alternative=alt).pvalue),
                                   n=(len(a), len(c)), other_ratios=others,
                                   p99_ratio=float(df[(df.workload == wl) & (df.cond == f"{wl}-{cond}")].p99.median() /
                                                   df[(df.workload == wl) & (df.cond == f"{wl}-{ctrl_name}")].p99.median())))
@@ -661,27 +710,30 @@ def stage_e(raw, thr, out, res):
     stab = df.groupby(["workload", "cond"])[[f"share_{k}" for k in CATS]].std().reset_index()
     res["attribution_stability_std"] = stab.to_dict(orient="records")
 
-    # Figure 5: stacked attribution shares
+    # Figure 5: which OS event types touched the tail requests, per condition
     order = ["none", "cpuhog", "netflood", "io", "hog0-shared", "hog0-moved"]
-    labels = {"none": "none", "cpuhog": "CPU hog", "netflood": "softirq\nflood", "io": "I/O",
-              "hog0-shared": "hog CPU0\nshared", "hog0-moved": "hog CPU0\nmoved"}
-    ccol = {"queue": "#bbbbbb", "sched": "#1f77b4", "irq": "#ff7f0e", "blocked": "#9467bd", "exec": "#2ca02c"}
+    labels = {"none": "none", "cpuhog": "CPU\nhog", "netflood": "softirq\nflood", "io": "I/O",
+              "hog0-shared": "hog0\nshared", "hog0-moved": "hog0\nmoved"}
+    ccol = {"sched": "#1f77b4", "irq": "#ff7f0e", "blocked": "#9467bd", "none": "#bbbbbb"}
     wls = [w for w in ["cpu", "kv", "net"] if w in set(summ.workload)]
-    fig, axs = plt.subplots(1, len(wls), figsize=(7.0, 2.0), sharey=True,
-                            gridspec_kw={"width_ratios": [len([o for o in order if f'{w}-{o}' in set(summ.cond)]) for w in wls]})
-    axs = np.atleast_1d(axs)
+    widths = [max(1, len([o for o in order if f"{w}-{o}" in set(summ.cond)])) for w in wls]
+    fig, axs = plt.subplots(1, len(wls), figsize=(7.0, 1.9), sharey=True,
+                            gridspec_kw={"width_ratios": widths}, squeeze=False)
+    axs = axs[0]
+    bw = 0.2
     for ax, wl in zip(axs, wls):
-        s = summ[summ.workload == wl].set_index("cond")
-        conds = [o for o in order if f"{wl}-{o}" in s.index]
-        bottom = np.zeros(len(conds))
-        for k in CATS:
-            v = np.array([s.loc[f"{wl}-{o}", f"share_{k}"] for o in conds])
-            ax.bar(range(len(conds)), v, 0.7, bottom=bottom, color=ccol[k], label=k)
-            bottom += v
-        ax.set_xticks(range(len(conds)))
+        sdf = summ[summ.workload == wl].set_index("cond")
+        conds = [o for o in order if f"{wl}-{o}" in sdf.index]
+        x = np.arange(len(conds))
+        for j, k in enumerate(TOUCH + ["none"]):
+            v = [sdf.loc[f"{wl}-{o}", f"touch_{k}"] for o in conds]
+            ax.bar(x + (j - 1.5) * bw, v, bw, color=ccol[k], label=k if k != "none" else "no OS event")
+        ax.set_xticks(x)
         ax.set_xticklabels([labels[o] for o in conds], fontsize=6)
         ax.set_title(f"{wl} workload")
-    axs[0].set_ylabel("share of tail requests")
+        ax.set_ylim(0, 1.05)
+        ax.grid(axis="y", alpha=0.3, lw=0.3)
+    axs[0].set_ylabel("fraction of tail\nrequests touched")
     axs[-1].legend(frameon=False, fontsize=6, loc="upper left", bbox_to_anchor=(1.0, 1.0))
     fig.tight_layout(pad=0.3)
     fig.savefig(out / "fig_signature.pdf")
@@ -768,13 +820,14 @@ def main():
                      drops=info.get("tl_rb_drops"))
             val.append(v)
             b["run_id"] = f"{exp}/{info['run_id']}"
+            b["noise"] = float(info.get("noise_before") or 0.0)
             ew.append(window_frame(b, b["run_id"].iat[0]))
             b = thin(b, seed=len(frames))
             keep = (["id", "lat", "thr", "is_tail", "w", "workload", "load", "stressor", "rep",
-                     "run_id", "qlen_proxy"] + ALIGNED + INHERIT + [c for c in b.columns if "@" in c])
+                     "run_id", "qlen_proxy", "noise"] + ALIGNED + INHERIT + [c for c in b.columns if "@" in c])
             b = b[keep]
             num = [c for c in keep if c not in ("workload", "load", "stressor", "run_id", "id",
-                                                "is_tail", "rep")]
+                                                "is_tail", "rep", "noise")]
             b[num] = b[num].astype("float32")
             frames.append(b)
     V = pd.DataFrame(val)
