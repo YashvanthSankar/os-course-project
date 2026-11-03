@@ -147,7 +147,7 @@ which never blocks, the I/O writer showed up as \sigCpuIoIrq$\times$
 worker CPUs. That is a cause our prediction (blocked) did not anticipate,
 and one that only per-thread IRQ charging can reveal.
 
-\begin{figure}[t]
+\begin{figure}[!htb]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig_signature.pdf}
 \caption{Intervention signatures: fold change of mean per-request delay

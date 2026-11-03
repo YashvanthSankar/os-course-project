@@ -114,39 +114,35 @@ def main():
              ("queue-length proxy (control)", "logreg"), ("control + aggregate", "forest"),
              ("control + aligned", "forest")]
     label = {"aligned": "aligned", "aligned (own window only)": "aligned, own only",
-             "aggregate@20ms": "aggregate 20\\,ms", "queue-length proxy (control)": "queue proxy",
-             "control + aggregate": "proxy + aggregate", "control + aligned": "proxy + aligned"}
+             "aggregate@20ms": "aggregate", "queue-length proxy (control)": "queue proxy",
+             "control + aggregate": "proxy+aggr.", "control + aligned": "proxy+aligned"}
     sets = list(dict.fromkeys(det.set))
+    short = {"logreg": "LR", "forest": "RF"}
     rows = []
     for fs, mdl in order:
         g = det[det.features == fs]
-        if mdl is None:
-            g = g[g.model.str.startswith("rule")]
-        else:
-            g = g[g.model == mdl]
+        g = g[g.model.str.startswith("rule")] if mdl is None else g[g.model == mdl]
         if g.empty:
             continue
-        mname = (g.iloc[0].model.replace("rule: ", "rule ").replace(" > ", " $>$ ")
-                 .replace("τ", "$\\tau$").replace("_", "\\_"))
-        mname = mname.replace("logreg", "logistic")
+        m0 = g.iloc[0].model
+        mname = "rule" if m0.startswith("rule") else short.get(m0, m0)
         cells = [label[fs], mname]
         for sname in sets:
             h = g[g.set == sname]
             if h.empty:
-                cells += ["--", "--"]
+                cells.append("--")
                 continue
             r = h.iloc[0]
-            cells += [f"{r.ap:.2f} [{r.ap_lo:.2f},{r.ap_hi:.2f}]", f"{r.f1:.2f}"]
+            cells.append(f"{r.ap:.2f} [{r.ap_lo:.2f},{r.ap_hi:.2f}]")
         rows.append(" & ".join(cells) + " \\\\")
-    hdr = " & ".join(f"\\multicolumn{{2}}{{c}}{{{s.split(' (')[0] if 'held' not in s else 'held-out net'}}}"
-                     for s in sets)
     (out / "tab_detect.tex").write_text(
-        "\\begin{table*}[t]\\centering\\caption{Tail-request detection: PR-AUC [run-bootstrap 95\\% CI] and F1 "
-        "at the training-set F1-optimal threshold. Train: cpu/kv reps 0--2. Test: reps 3--4; net never seen.}"
-        "\\label{tab:detect}\\footnotesize\\setlength{\\tabcolsep}{5pt}\n"
-        "\\begin{tabular}{ll" + "rr" * len(sets) + "}\\toprule\n"
-        "features & model & " + hdr + "\\\\\n & & " + " & ".join(["PR-AUC", "F1"] * len(sets)) +
-        "\\\\\\midrule\n" + "\n".join(rows) + "\n\\bottomrule\\end{tabular}\\end{table*}\n")
+        "\\begin{table}[t]\\centering\\caption{Tail-request detection, PR-AUC [run-bootstrap 95\\% CI]. "
+        "Train: cpu/kv reps 0--2; test: reps 3--4; net never seen. LR logistic regression, RF random "
+        "forest; rules: total OS delay $>\\tau$ (aligned), PSI CPU $>\\tau$ (aggregate).}"
+        "\\label{tab:detect}\\scriptsize\\setlength{\\tabcolsep}{2.5pt}\n"
+        "\\begin{tabular}{llrr}\\toprule\n"
+        "features & model & test (cpu/kv) & held-out (net)\\\\\\midrule\n" +
+        "\n".join(rows) + "\n\\bottomrule\\end{tabular}\\end{table}\n")
     for fs, key in (("aligned", "Al"), ("aggregate@20ms", "Ag"), ("queue-length proxy (control)", "Q"),
                     ("control + aligned", "QAl"), ("control + aggregate", "QAg")):
         for sname, sk in zip(sets, ("Test", "Held")):
