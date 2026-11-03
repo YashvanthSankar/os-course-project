@@ -37,7 +37,8 @@ guest kernel cannot observe.
 \begin{itemize}
 \item \sys{}, an eBPF pipeline that keeps per-thread scheduler and IRQ
 accounting (preemption wait, wakeup delay, blocked time, interrupt time
-charged to the interrupted thread) in an mmap-able BPF map. The application
+charged to the interrupted thread) in an mmap-able BPF map. (a mechanism ghost-bpf uses for
+scheduling~\cite{rhoden2022ghostbpf}; we apply it to attribution). The application
 reads it at request boundaries with plain memory loads, so no trap or ring
 buffer record is needed per request. It costs \ovNsKvShm--\ovNsCpuShm{}\,ns
 of tracer CPU per request, 47--53$\times$ less than uprobe-based windows
