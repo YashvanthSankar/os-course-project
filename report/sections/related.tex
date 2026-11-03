@@ -3,7 +3,11 @@
 
 \textbf{Sources of tail latency.} Dean and Barroso~\cite{dean2013tail}
 showed that, in fan-out services, the latency tail of individual servers
-sets the latency users see. Li et al.~\cite{li2014tales} measured where the
+sets the latency users see. Delimitrou and Kozyrakis~\cite{delimitrou2018amdahl} extended Amdahl's
+law to tail latency with queueing models. They showed that a tail target,
+unlike an average target, shifts the best design toward larger
+cores, so what drives the tail directly affects how machines are
+provisioned. Li et al.~\cite{li2014tales} measured where the
 excess tail of null-RPC, Memcached and Nginx servers on Linux comes from:
 background processes, FIFO-violating scheduling, the mapping of NIC
 interrupts and threads to cores, and power saving. Each source was isolated
@@ -31,7 +35,10 @@ histograms per CPU, process or cgroup. Netflix uses the same runqueue
 signal per container to detect noisy neighbours~\cite{netflix2024noisy}.
 Their output is aggregated over time or over a task, so it cannot be joined
 with the latency of a single request. \texttt{runqlat} also folds wakeup
-and preemption waits into one histogram.
+and preemption waits into one histogram. Recording every scheduler event instead,
+as \texttt{perf sched} or ftrace do, is complete but expensive: our own
+per-event streaming mode costs 63--104$\times$ more tracer CPU per request
+than in-kernel accounting (\S\ref{sec:overhead}).
 
 \textbf{Request-level tracing and mitigation.} Pivot
 Tracing~\cite{mace2015pivot} and Hindsight~\cite{zhang2023hindsight}
@@ -42,7 +49,18 @@ cannot be seen. Caladan~\cite{fried2020caladan} shows that fast
 queueing-delay signals can drive core reallocation at microsecond scale,
 but it replaces the Linux scheduler with its own runtime.
 
-\textbf{Gap.} We found no low-overhead mechanism that, on an unmodified
+\textbf{Programmable scheduling.} A second line of work changes the
+scheduler itself to cut tail latency. Shinjuku~\cite{kaffes2019shinjuku}
+preempts requests every few microseconds so short requests no longer wait
+behind long ones. ghOSt~\cite{humphries2021ghost} delegates Linux
+scheduling policy to user-space agents. \texttt{sched\_ext}~\cite{schedext}
+now lets such policies be written as BPF programs in the mainline kernel.
+These systems make the policy flexible, but none of them says \emph{which}
+OS mechanism delayed a given request. Without that, an operator cannot tell
+whether a new policy, a different CPU placement or an interrupt-affinity
+change is the right fix.
+
+\textbf{Gaps.} We found no low-overhead mechanism that, on an unmodified
 Linux kernel, tags each request with the scheduler and interrupt delay it
 (and the requests queued ahead of it) suffered, compares that tag against
 aggregate event counts and a queueing-only control, tests generalization to
