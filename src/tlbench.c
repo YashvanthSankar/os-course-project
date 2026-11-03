@@ -89,7 +89,7 @@ struct rec {
 
 /* kernel-maintained per-thread counters, read from the shared map */
 struct ksnap {
-	uint64_t runq, wake, blocked, soft, hard;
+	uint64_t oncpu, runq, wake, blocked, soft, hard;
 	uint32_t nvcsw, nivcsw, nmigr, nsoft, nhard;
 };
 
@@ -165,6 +165,10 @@ static inline volatile struct tstate *my_slot(pid_t tid)
 
 static inline void ksnap_take(struct ksnap *k, volatile struct tstate *s)
 {
+	/* the thread is running, so its current on-CPU segment started at
+	 * oncpu_ts (same clock as bpf_ktime_get_ns) */
+	uint64_t ts = s->oncpu_ts, acc = s->oncpu_ns;
+	k->oncpu = acc + (ts ? now_ns() - ts : 0);
 	k->runq = s->runq_ns;
 	k->wake = s->wake_ns;
 	k->blocked = s->blocked_ns;
@@ -206,6 +210,7 @@ static inline void kwin_end(struct kwin *w, uint64_t id)
 	ksnap_take(&b, w->s);
 	w->s->last_wake_delay = 0;
 	struct kfeat *f = &kf[id];
+	f->d.oncpu = b.oncpu - w->a.oncpu;
 	f->d.runq = b.runq - w->a.runq;
 	f->d.wake = b.wake - w->a.wake;
 	f->d.blocked = b.blocked - w->a.blocked;
@@ -764,7 +769,7 @@ int main(int argc, char **argv)
 	if (!f) { perror("fopen out"); return 1; }
 	setvbuf(f, NULL, _IOFBF, 1 << 22);
 	fprintf(f, "id,tid,cpu,t_arr,t_enq,t_start,t_end,t_done,warm%s\n",
-		kf ? ",pre_wake_ns,runq_ns,wake_ns,blocked_ns,softirq_ns,hardirq_ns,"
+		kf ? ",pre_wake_ns,oncpu_ns,runq_ns,wake_ns,blocked_ns,softirq_ns,hardirq_ns,"
 		     "nvcsw,nivcsw,nmigr,nsoftirq,nhardirq,kvalid" : "");
 	uint64_t n_done = 0, n_meas = 0, n_lost = 0;
 	uint64_t warm_end = t_origin + (uint64_t)(C.warmup * 1e9);
@@ -788,8 +793,9 @@ int main(int argc, char **argv)
 			(unsigned long long)r->t_end, (unsigned long long)r->t_done, warm);
 		if (kf) {
 			struct kfeat *k = &kf[i];
-			fprintf(f, ",%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u",
-				(unsigned long long)k->pre_wake, (unsigned long long)k->d.runq,
+			fprintf(f, ",%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u",
+				(unsigned long long)k->pre_wake, (unsigned long long)k->d.oncpu,
+				(unsigned long long)k->d.runq,
 				(unsigned long long)k->d.wake, (unsigned long long)k->d.blocked,
 				(unsigned long long)k->d.soft, (unsigned long long)k->d.hard,
 				k->d.nvcsw, k->d.nivcsw, k->d.nmigr, k->d.nsoft, k->d.nhard, k->ok);

@@ -28,16 +28,16 @@ TLAT = BUILD / "tlat"
 STRESSOR = BUILD / "stressor"
 HICCUP = BUILD / "hiccup"
 NOISE_LIMIT = float(os.environ.get("NOISE_LIMIT", "3.0"))  # % of vCPU time lost
-RAW = ROOT / "data" / "raw"
+RAW = Path(os.environ.get("TL_RAW", ROOT / "data" / "raw"))
 PIN = "/sys/fs/bpf/tlat_slots"
 PRIMARY = "shm"   # proposed tracer: trap-free shared per-thread counters
 
 WORKER_CPUS = "0-2"
 GEN_CPU = 3
 TRACER_CPU = 3
-DURATION = 15
+DURATION = float(os.environ.get("TL_DURATION", 15))
 WARMUP = 2
-REPS = 5
+REPS = int(os.environ.get("TL_REPS", 5))
 
 # Workload definitions. Service times were measured in the pilot run and the
 # rates set to roughly 30 / 50 / 70 % utilisation of three workers.
@@ -45,9 +45,9 @@ WORKLOADS = {
     "cpu": {"args": ["-m", "cpu", "-w", "3", "-u", "100"],
             "rates": {"low": 9000, "mid": 15000, "high": 21000}},
     "kv":  {"args": ["-m", "kv", "-w", "3", "-u", "20", "-S", "200", "-L", "8"],
-            "rates": {"low": 25000, "mid": 40000, "high": 55000}},
+            "rates": {"low": 30000, "mid": 50000, "high": 70000}},
     "net": {"args": ["-m", "net", "-w", "3", "-u", "50"],
-            "rates": {"low": 12000, "mid": 20000, "high": 28000}},
+            "rates": {"low": 10000, "mid": 17000, "high": 24000}},
 }
 CFG_FILE = ROOT / "configs" / "workloads.json"
 if CFG_FILE.exists():
@@ -209,11 +209,12 @@ def exp_overhead():
                 plan.append((f"{wl}-{tracer}-r{rep}", wl, tracer, 1 + rep))
     random.Random(11).shuffle(plan)
     for run_id, wl, tracer, seed in plan:
-        run_one("overhead", run_id, wl, "max", tracer, seed=seed, rate=0, duration=10)
+        run_one("overhead", run_id, wl, "max", tracer, seed=seed, rate=0,
+                duration=min(10, DURATION))
     # open loop at mid load: event loss of streaming, and the uprobe variant
     # of the per-request attribution (feature equivalence with shm)
     for wl in ("cpu", "kv"):
-        for rep in range(3):
+        for rep in range(min(3, REPS)):
             run_one("overhead", f"{wl}-stream-open-r{rep}", wl, "mid", "stream", seed=1 + rep)
             run_one("overhead", f"{wl}-attrib-open-r{rep}", wl, "mid", "attrib", seed=1 + rep)
 

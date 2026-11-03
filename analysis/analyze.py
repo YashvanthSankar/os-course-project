@@ -40,6 +40,8 @@ SCHED = ["pre_wake_ns", "runq_ns", "wake_ns", "nivcsw", "nmigr"]
 IRQ = ["softirq_ns", "hardirq_ns", "nsoftirq", "nhardirq"]
 BLOCK = ["blocked_ns", "nvcsw"]
 ALIGNED = SCHED + IRQ + BLOCK
+# OS delay the workers suffered while this request waited in the queue
+INHERIT = ["inh_sched_ns", "inh_irq_ns", "inh_blocked_ns"]
 AGG_BASE = ["nswitch", "ninvol", "nwakeup", "nmigr_g", "nhardirq_g", "hardirq_ns_g",
             "nsoft_all", "softns_all", "nsoft_netrx", "nsoft_timer", "psi_cpu", "psi_io"]
 NS_COLS = [c for c in ALIGNED if c.endswith("_ns")]
@@ -82,6 +84,40 @@ def attach_agg(df, agg, windows=(5, 20, 100), step_ms=5):
     return df
 
 
+SIG_FLOOR_NS = 10_000  # an OS delay below 10 us is not counted as an "event"
+
+
+def add_inherited(b, workers=3):
+    """Queueing-aware attribution. A request that waits in the queue is late
+    because the requests ahead of it were slow; if *they* were preempted or
+    interrupted, that OS delay is inherited. For each request we sum the
+    significant OS delay (portion above SIG_FLOOR_NS, so that many tiny
+    delays cannot add up to a proxy for queue length) of all requests that
+    completed while it waited (t_enq..t_start), divided by the number of
+    workers. 'qlen_proxy' (completions during the wait / workers) is kept as
+    a control: it encodes pure queueing and no OS information."""
+    if not len(b):
+        for c in INHERIT + ["qlen_proxy"]:
+            b[c] = 0.0
+        return b
+    order = np.argsort(b["t_end"].values, kind="stable")
+    t_end = b["t_end"].values[order]
+    sig = lambda v: np.clip(v.astype(float) - SIG_FLOOR_NS, 0, None)  # noqa: E731
+    comps = {
+        "inh_sched_ns": sig((b["pre_wake_ns"] + b["runq_ns"] + b["wake_ns"]).values),
+        "inh_irq_ns": sig((b["softirq_ns"] + b["hardirq_ns"]).values),
+        "inh_blocked_ns": sig(b["blocked_ns"].values),
+        "qlen_proxy": np.ones(len(b)),
+    }
+    ia = np.searchsorted(t_end, b["t_enq"].values, side="right")
+    ib = np.searchsorted(t_end, b["t_start"].values, side="right")
+    ib = np.maximum(ia, ib)
+    for c, v in comps.items():
+        cs = np.concatenate([[0.0], np.cumsum(v[order].astype(float))])
+        b[c] = (cs[ib] - cs[ia]) / workers
+    return b
+
+
 def load_run(d, thr_map=None):
     d = Path(d)
     cond = read_json(d / "cond.json")
@@ -105,8 +141,9 @@ def load_run(d, thr_map=None):
     if "kvalid" in b.columns:          # trap-free shared-counter mode
         info["coverage"] = float(b["kvalid"].mean())
         b = b[b["kvalid"] == 1].copy()
-        b["oncpu_ns"] = ((b["t_end"] - b["t_start"]) - b["runq_ns"] - b["wake_ns"]
-                         - b["blocked_ns"]).clip(lower=0)
+        if "oncpu_ns" not in b.columns:  # older format: derive (no validation possible)
+            b["oncpu_ns"] = ((b["t_end"] - b["t_start"]) - b["runq_ns"] - b["wake_ns"]
+                             - b["blocked_ns"]).clip(lower=0)
         have_k = True
     elif (d / "tlat.req.csv").exists():  # uprobe mode
         k = pd.read_csv(d / "tlat.req.csv")
@@ -114,13 +151,15 @@ def load_run(d, thr_map=None):
         info["coverage"] = float(b["runq_ns"].notna().mean())
         b = b[b["runq_ns"].notna()].copy()
         have_k = True
+    if have_k:
+        b = add_inherited(b)
     if have_k and (d / "tlat.agg.csv").exists():
         b = attach_agg(b, load_agg(d / "tlat.agg.csv"))
     if thr_map is not None:
         key = (cond["workload"], cond["load"])
         if key in thr_map:
             b["thr"] = thr_map[key]
-            b["tail"] = (b["lat"] > thr_map[key]).astype(int)
+            b["is_tail"] = (b["lat"] > thr_map[key]).astype(int)
     for c in ("exp", "run_id", "workload", "load", "tracer", "stressor", "seed"):
         b[c] = cond[c]
     b["rep"] = int(cond["run_id"].rsplit("-r", 1)[-1]) if "-r" in cond["run_id"] else 0
@@ -297,7 +336,15 @@ def components(b):
     c["irq"] = b["softirq_ns"] + b["hardirq_ns"]
     c["blocked"] = b["blocked_ns"]
     c["exec"] = (b["oncpu_ns"] - c["irq"]).clip(lower=0)
-    c["queue"] = (pre - b["pre_wake_ns"]).clip(lower=0)
+    q = (pre - b["pre_wake_ns"]).clip(lower=0)
+    if "inh_sched_ns" in b:
+        inh = b[INHERIT].sum(axis=1)
+        scale = np.where(inh > q, q / inh.where(inh > 0, 1), 1.0)  # never exceed the wait
+        c["sched"] += b["inh_sched_ns"] * scale
+        c["irq"] += b["inh_irq_ns"] * scale
+        c["blocked"] += b["inh_blocked_ns"] * scale
+        q = (q - inh * scale).clip(lower=0)
+    c["queue"] = q
     return c
 
 
@@ -321,30 +368,40 @@ def featurize(b, cols, norm=True):
     return np.log1p(X.clip(lower=0).values)
 
 
-def subsample(df, neg_frac=0.08, seed=0):
-    pos = df[df.tail == 1]
-    neg = df[df.tail == 0].sample(frac=neg_frac, random_state=seed)
+def thin(b, neg_frac=0.05, seed=0):
+    """Keep every tail request and a random neg_frac of the others, with
+    weight 1/neg_frac, so all metrics below stay unbiased (weighted)."""
+    keep = (b["is_tail"].values == 1) | (np.random.default_rng(seed).random(len(b)) < neg_frac)
+    out = b[keep].copy()
+    out["w"] = np.where(out["is_tail"].values == 1, 1.0, 1.0 / neg_frac)
+    return out
+
+
+def subsample(df, neg_frac=0.5, seed=0):
+    pos = df[df.is_tail == 1]
+    neg = df[df.is_tail == 0].sample(frac=neg_frac, random_state=seed)
     s = pd.concat([pos, neg])
-    w = np.where(s.tail.values == 1, 1.0, 1.0 / neg_frac)
+    w = s["w"].values * np.where(s.is_tail.values == 1, 1.0, 1.0 / neg_frac)
     return s, w
 
 
-def best_f1_threshold(y, p):
-    pr, rc, th = precision_recall_curve(y, p)
+def best_f1_threshold(y, p, w=None):
+    pr, rc, th = precision_recall_curve(y, p, sample_weight=w)
     f1 = 2 * pr * rc / np.maximum(pr + rc, 1e-12)
     i = int(np.nanargmax(f1[:-1])) if len(th) else 0
     return float(th[i]) if len(th) else 0.5
 
 
 def eval_scores(df, y, p, t, minutes):
+    w = df["w"].values
     yhat = p >= t
-    tp = int(np.sum(yhat & (y == 1)))
-    fp = int(np.sum(yhat & (y == 0)))
-    fn = int(np.sum(~yhat & (y == 1)))
-    prec = tp / max(1, tp + fp)
-    rec = tp / max(1, tp + fn)
+    tp = float(np.sum(w[yhat & (y == 1)]))
+    fp = float(np.sum(w[yhat & (y == 0)]))
+    fn = float(np.sum(w[~yhat & (y == 1)]))
+    prec = tp / max(1e-12, tp + fp)
+    rec = tp / max(1e-12, tp + fn)
     f1 = 2 * prec * rec / max(1e-12, prec + rec)
-    ap = average_precision_score(y, p) if y.sum() else float("nan")
+    ap = average_precision_score(y, p, sample_weight=w) if y.sum() else float("nan")
     # bootstrap AP over runs
     aps = []
     rid = df["run_id"].values
@@ -355,17 +412,17 @@ def eval_scores(df, y, p, t, minutes):
             pick = RNG.choice(uniq, len(uniq))
             ii = np.concatenate([groups[r] for r in pick])
             if y[ii].sum():
-                aps.append(average_precision_score(y[ii], p[ii]))
+                aps.append(average_precision_score(y[ii], p[ii], sample_weight=w[ii]))
     lo, hi = (np.percentile(aps, 2.5), np.percentile(aps, 97.5)) if aps else (np.nan, np.nan)
     return dict(ap=float(ap), ap_lo=float(lo), ap_hi=float(hi), precision=prec, recall=rec,
                 f1=f1, tp=tp, fp=fp, fn=fn, fa_per_min=fp / max(minutes, 1e-9),
-                base_rate=float(y.mean()))
+                base_rate=float(np.average(y, weights=w)))
 
 
 def fit_models(train, cols, norm=True):
     s, w = subsample(train)
     X = featurize(s, cols, norm)
-    y = s.tail.values
+    y = s.is_tail.values
     lr = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0,
                                                             class_weight="balanced"))
     lr.fit(X, y, logisticregression__sample_weight=w)
@@ -381,20 +438,28 @@ def run_minutes(df):
 
 def stage_d(frames, out, res):
     dev = frames[frames.workload.isin(["cpu", "kv"])]
-    train = dev[dev.rep <= 2]
-    test = dev[dev.rep >= 3]
+    reps = sorted(dev.rep.unique())
+    n_train = max(1, int(round(0.6 * len(reps))))  # 5 reps -> 0,1,2 train; 3,4 test
+    train = dev[dev.rep.isin(reps[:n_train])]
+    test = dev[dev.rep.isin(reps[n_train:])]
     held = frames[frames.workload == "net"]
     dur_min = 15 / 60.0
-    sets = {"test (cpu+kv, unseen runs)": test, "held-out workload (net)": held}
+    sets = {k: v for k, v in {"test (cpu+kv, unseen runs)": test,
+                              "held-out workload (net)": held}.items()
+            if len(v) and v.is_tail.sum() > 0}
     res["split"] = {"train_runs": int(train.run_id.nunique()), "test_runs": int(test.run_id.nunique()),
                     "held_runs": int(held.run_id.nunique()), "train_rows": len(train),
                     "test_rows": len(test), "held_rows": len(held),
-                    "train_tail_rate": float(train.tail.mean())}
+                    "train_tail_rate": float(np.average(train.is_tail, weights=train.w))}
 
     feature_sets = {
-        "aligned": ALIGNED,
+        "aligned": ALIGNED + INHERIT,
+        "aligned (own window only)": ALIGNED,
+        "queue-length proxy (control)": ["qlen_proxy"],
+        "control + aligned": ["qlen_proxy"] + ALIGNED + INHERIT,
+        "control + aggregate": ["qlen_proxy"] + [f"{c}@20" for c in AGG_BASE],
         "aggregate@20ms": [f"{c}@20" for c in AGG_BASE],
-        "aligned+aggregate": ALIGNED + [f"{c}@20" for c in AGG_BASE],
+        "aligned+aggregate": ALIGNED + INHERIT + [f"{c}@20" for c in AGG_BASE],
     }
     results, curves = [], {}
     models_cache = {}
@@ -404,56 +469,64 @@ def stage_d(frames, out, res):
         Xtr = featurize(train, cols)
         for mname, m in ms.items():
             ptr = m.predict_proba(Xtr)[:, 1]
-            t = best_f1_threshold(train.tail.values, ptr)
+            t = best_f1_threshold(train.is_tail.values, ptr, train.w.values)
             for sname, sdf in sets.items():
                 p = m.predict_proba(featurize(sdf, cols))[:, 1]
-                r = eval_scores(sdf, sdf.tail.values, p, t, sdf.run_id.nunique() * dur_min)
+                r = eval_scores(sdf, sdf.is_tail.values, p, t, sdf.run_id.nunique() * dur_min)
                 r.update(features=fs, model=mname, set=sname)
                 results.append(r)
-                curves[(fs, mname, sname)] = precision_recall_curve(sdf.tail.values, p)[:2]
+                curves[(fs, mname, sname)] = precision_recall_curve(sdf.is_tail.values, p,
+                                                                    sample_weight=sdf.w.values)[:2]
 
     # interpretable rules
     def os_delay(df):
         return ((df.pre_wake_ns + df.runq_ns + df.wake_ns + df.softirq_ns + df.hardirq_ns +
-                 df.blocked_ns) / df.thr).values
+                 df.blocked_ns + df.inh_sched_ns + df.inh_irq_ns + df.inh_blocked_ns) / df.thr).values
 
-    t = best_f1_threshold(train.tail.values, os_delay(train))
+    t = best_f1_threshold(train.is_tail.values, os_delay(train), train.w.values)
     res["rule_threshold_frac_of_p99"] = t
     for sname, sdf in sets.items():
         p = os_delay(sdf)
-        r = eval_scores(sdf, sdf.tail.values, p, t, sdf.run_id.nunique() * dur_min)
+        r = eval_scores(sdf, sdf.is_tail.values, p, t, sdf.run_id.nunique() * dur_min)
         r.update(features="aligned", model="rule: OS delay > τ", set=sname)
         results.append(r)
-        curves[("aligned", "rule", sname)] = precision_recall_curve(sdf.tail.values, p)[:2]
+        curves[("aligned", "rule", sname)] = precision_recall_curve(sdf.is_tail.values, p,
+                                                                    sample_weight=sdf.w.values)[:2]
     # best single aggregate counter rule
     best = None
     for c in AGG_BASE:
         col = f"{c}@20"
-        ap = average_precision_score(train.tail.values, train[col].values)
+        ap = average_precision_score(train.is_tail.values, train[col].values,
+                                     sample_weight=train.w.values)
         if best is None or ap > best[1]:
             best = (col, ap)
     col = best[0]
-    t = best_f1_threshold(train.tail.values, train[col].values)
+    t = best_f1_threshold(train.is_tail.values, train[col].values, train.w.values)
     for sname, sdf in sets.items():
         p = sdf[col].values
-        r = eval_scores(sdf, sdf.tail.values, p, t, sdf.run_id.nunique() * dur_min)
+        r = eval_scores(sdf, sdf.is_tail.values, p, t, sdf.run_id.nunique() * dur_min)
         r.update(features="aggregate@20ms", model=f"rule: {col.split('@')[0]} > τ", set=sname)
         results.append(r)
-        curves[("aggregate@20ms", "rule", sname)] = precision_recall_curve(sdf.tail.values, p)[:2]
+        curves[("aggregate@20ms", "rule", sname)] = precision_recall_curve(
+            sdf.is_tail.values, p, sample_weight=sdf.w.values)[:2]
     det = pd.DataFrame(results)
     det.to_csv(out / "detection.csv", index=False)
     res["detection"] = det.to_dict(orient="records")
 
     # feature importance (forest, aligned)
     rf = models_cache["aligned"]["forest"]
-    res["importance"] = dict(sorted(zip(ALIGNED, map(float, rf.feature_importances_)),
+    res["importance"] = dict(sorted(zip(ALIGNED + INHERIT, map(float, rf.feature_importances_)),
                                     key=lambda kv: -kv[1]))
     lr = models_cache["aligned"]["logreg"]
-    res["logreg_coef"] = dict(zip(ALIGNED, map(float, lr[-1].coef_[0])))
+    res["logreg_coef"] = dict(zip(ALIGNED + INHERIT, map(float, lr[-1].coef_[0])))
 
     # ablations (forest)
-    abl = {"all aligned": ALIGNED, "− scheduler": IRQ + BLOCK, "− interrupt": SCHED + BLOCK,
-           "− blocking": SCHED + IRQ, "scheduler only": SCHED}
+    abl = {"all aligned": ALIGNED + INHERIT,
+           "− inherited": ALIGNED,
+           "− scheduler": IRQ + BLOCK + ["inh_irq_ns", "inh_blocked_ns"],
+           "− interrupt": SCHED + BLOCK + ["inh_sched_ns", "inh_blocked_ns"],
+           "− blocking": SCHED + IRQ + ["inh_sched_ns", "inh_irq_ns"],
+           "scheduler only": SCHED + ["inh_sched_ns"]}
     for w in (5, 20, 100):
         abl[f"aggregate {w} ms"] = [f"{c}@{w}" for c in AGG_BASE]
     arows = []
@@ -462,13 +535,15 @@ def stage_d(frames, out, res):
         for sname, sdf in sets.items():
             p = m.predict_proba(featurize(sdf, cols))[:, 1]
             arows.append(dict(ablation=name, set=sname,
-                              ap=float(average_precision_score(sdf.tail.values, p))))
+                              ap=float(average_precision_score(sdf.is_tail.values, p,
+                                                               sample_weight=sdf.w.values))))
     ab = pd.DataFrame(arows)
     ab.to_csv(out / "ablation.csv", index=False)
     res["ablation"] = ab.to_dict(orient="records")
 
     # Figure 3: PR curves
-    fig, axs = plt.subplots(1, 2, figsize=(7.0, 2.1), sharey=True)
+    fig, axs = plt.subplots(1, max(1, len(sets)), figsize=(7.0, 2.1), sharey=True, squeeze=False)
+    axs = axs[0]
     styles = [(("aligned", "forest"), "aligned · forest", "#1f77b4", "-"),
               (("aligned", "logreg"), "aligned · logistic", "#1f77b4", "--"),
               (("aligned", "rule"), "aligned · rule", "#1f77b4", ":"),
@@ -481,7 +556,7 @@ def stage_d(frames, out, res):
             if pr is None:
                 continue
             ax.plot(pr[1], pr[0], ls, color=c, lw=1, label=lab)
-        ax.axhline(sets[sname].tail.mean(), color="grey", lw=0.6, ls="-.")
+        ax.axhline(np.average(sets[sname].is_tail, weights=sets[sname].w), color="grey", lw=0.6, ls="-.")
         ax.set_title(sname)
         ax.set_xlabel("recall")
         ax.set_xlim(0, 1)
@@ -499,7 +574,7 @@ def stage_d(frames, out, res):
     x = np.arange(len(names))
     for i, sname in enumerate(sets):
         ys = [ab[(ab.ablation == n) & (ab.set == sname)].ap.iloc[0] for n in names]
-        ax.bar(x + (i - 0.5) * 0.4, ys, 0.4, label=["test (cpu+kv)", "held-out (net)"][i],
+        ax.bar(x + (i - 0.5) * 0.4, ys, 0.4, label=sname.split(",")[0].replace(" workload", ""),
                color=["#4c72b0", "#55a868"][i])
     ax.set_xticks(x)
     ax.set_xticklabels(names, rotation=35, ha="right")
@@ -520,9 +595,9 @@ def attribute(b):
     """Dominant excess component of every tail request, relative to the
     run's non-tail medians."""
     c = components(b)
-    med = c[b.tail == 0].median()
+    med = c[b.is_tail == 0].median()
     ex = (c - med).clip(lower=0)
-    tails = ex[b.tail == 1]
+    tails = ex[b.is_tail == 1]
     if not len(tails):
         return pd.Series(0.0, index=CATS), ex
     dom = tails.idxmax(axis=1)
@@ -535,13 +610,13 @@ def stage_e(raw, thr, out, res):
     sig = {}
     for d in runs(raw, "interv"):
         b, info = load_run(d, thr)
-        if "tail" not in b:
+        if "is_tail" not in b:
             continue
         cond = info["run_id"].rsplit("-r", 1)[0]
         share, ex = attribute(b)
         comp = components(b)
         r = dict(cond=cond, workload=info["workload"], stressor=info["stressor"],
-                 run_id=info["run_id"], tail_rate=float(b.tail.mean()),
+                 run_id=info["run_id"], tail_rate=float(b.is_tail.mean()),
                  p99=pct(b.lat, 99), p50=pct(b.lat, 50),
                  sched_med=float(comp.sched.median()), sched_p99=pct(comp.sched, 99),
                  irq_p99=pct(comp.irq, 99), blocked_p99=pct(comp.blocked, 99),
@@ -614,23 +689,25 @@ def stage_e(raw, thr, out, res):
 
 
 # ---------------------------------------------------------------- early warning
-def early_warning(frames, out, res, bucket_ms=10, min_frac=0.05):
-    """Window-level: predict whether window t+1 is a tail episode (>5 % of
-    its requests above p99) from telemetry observed in window t."""
+def window_frame(b, rid, bucket_ms=10, min_frac=0.05):
+    """Per-run window table for the early-warning test (full data)."""
     rows = []
-    for rid, b in frames.groupby("run_id"):
+    for _ in [0]:
         t0 = b.t_arr.min()
         w = ((b.t_done - t0) // (bucket_ms * 1_000_000)).astype(int)
-        g = b.groupby(w)
+        tmp = pd.DataFrame({
+            "w": w.values, "is_tail": b.is_tail.values,
+            "sched": ((b.pre_wake_ns + b.runq_ns + b.wake_ns) / b.thr).values,
+            "irq": ((b.softirq_ns + b.hardirq_ns) / b.thr).values,
+            "blocked": (b.blocked_ns / b.thr).values,
+            "ninvol": b["ninvol@20"].values, "nsoft": b["nsoft_all@20"].values,
+            "psi_cpu": b["psi_cpu@20"].values})
+        g = tmp.groupby("w")
+        m = g.mean()
         agg = pd.DataFrame({
-            "episode": g.tail.mean() > min_frac,
-            "n": g.size(),
-            "sched_mean": g.apply(lambda x: ((x.pre_wake_ns + x.runq_ns + x.wake_ns) / x.thr).mean()),
-            "irq_mean": g.apply(lambda x: ((x.softirq_ns + x.hardirq_ns) / x.thr).mean()),
-            "blocked_mean": g.apply(lambda x: (x.blocked_ns / x.thr).mean()),
-            "ninvol": g["ninvol@20"].mean(), "nsoft": g["nsoft_all@20"].mean(),
-            "psi_cpu": g["psi_cpu@20"].mean(),
-        })
+            "episode": m.is_tail > min_frac, "n": g.size(),
+            "sched_mean": m.sched, "irq_mean": m.irq, "blocked_mean": m.blocked,
+            "ninvol": m.ninvol, "nsoft": m.nsoft, "psi_cpu": m.psi_cpu})
         nxt = agg["episode"].shift(-1)
         agg = agg.iloc[:-1].copy()
         agg["next_episode"] = nxt.iloc[:-1].astype(bool).values
@@ -638,12 +715,19 @@ def early_warning(frames, out, res, bucket_ms=10, min_frac=0.05):
         agg["workload"] = b.workload.iat[0]
         agg["rep"] = b.rep.iat[0]
         rows.append(agg)
-    if not rows:
+    return rows[0]
+
+
+def early_warning(W, out, res):
+    """Window-level: predict whether window t+1 is a tail episode (>5 % of
+    its requests above p99) from telemetry observed in window t."""
+    if W is None or not len(W):
         return
-    W = pd.concat(rows)
     feats = ["sched_mean", "irq_mean", "blocked_mean", "ninvol", "nsoft", "psi_cpu", "n"]
     dev = W[W.workload.isin(["cpu", "kv"])]
-    tr, te, he = dev[dev.rep <= 2], dev[dev.rep >= 3], W[W.workload == "net"]
+    reps = sorted(dev.rep.unique())
+    n_train = max(1, int(round(0.6 * len(reps))))
+    tr, te, he = dev[dev.rep.isin(reps[:n_train])], dev[dev.rep.isin(reps[n_train:])], W[W.workload == "net"]
     m = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, class_weight="balanced"))
     m.fit(np.log1p(tr[feats].clip(lower=0)), tr.next_episode)
     out_r = {}
@@ -670,24 +754,29 @@ def main():
     thr = stage_a(a.raw, out, res)
     stage_b(a.raw, out, res)
 
-    frames, val = [], []
+    frames, val, ew = [], [], []
     for exp in ("main", "interv"):
         for d in runs(a.raw, exp):
             cond = read_json(d / "cond.json")
             if cond["tracer"] != "shm":
                 continue
             b, info = load_run(d, thr)
-            if "tail" not in b or not len(b):
+            if "is_tail" not in b or not len(b):
                 continue
             v = validate(b)
             v.update(run_id=f"{exp}/{info['run_id']}", coverage=info.get("coverage"),
                      drops=info.get("tl_rb_drops"))
             val.append(v)
             b["run_id"] = f"{exp}/{info['run_id']}"
-            keep = (["id", "lat", "thr", "tail", "t_arr", "t_enq", "t_start", "t_end", "t_done", "oncpu_ns",
-                     "workload", "load", "stressor", "rep", "run_id"] + ALIGNED +
-                    [c for c in b.columns if "@" in c])
-            frames.append(b[keep])
+            ew.append(window_frame(b, b["run_id"].iat[0]))
+            b = thin(b, seed=len(frames))
+            keep = (["id", "lat", "thr", "is_tail", "w", "workload", "load", "stressor", "rep",
+                     "run_id", "qlen_proxy"] + ALIGNED + INHERIT + [c for c in b.columns if "@" in c])
+            b = b[keep]
+            num = [c for c in keep if c not in ("workload", "load", "stressor", "run_id", "id",
+                                                "is_tail", "rep")]
+            b[num] = b[num].astype("float32")
+            frames.append(b)
     V = pd.DataFrame(val)
     V.to_csv(out / "validation.csv", index=False)
     res["validation"] = {"runs": len(V), "coverage_min": float(V.coverage.min()),
@@ -697,7 +786,7 @@ def main():
     F = pd.concat(frames, ignore_index=True)
     stage_d(F, out, res)
     stage_e(a.raw, thr, out, res)
-    early_warning(F, out, res)
+    early_warning(pd.concat(ew) if ew else None, out, res)
 
     def clean(o):
         if isinstance(o, dict):
