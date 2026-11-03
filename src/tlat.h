@@ -6,8 +6,39 @@
 #define MODE_COUNT  0  /* global event counters only (baseline tracer)      */
 #define MODE_ATTRIB 1  /* per-request in-kernel aggregation (proposed)      */
 #define MODE_STREAM 2  /* stream every target event to user space (ablation)*/
+#define MODE_SHM    3  /* per-thread counters in an mmap-able map, read by the
+			* application itself at request boundaries (no traps) */
+
+#define NSLOTS 4096    /* per-thread slots in the shared map, indexed tid % NSLOTS */
 
 #define NSOFTIRQ 10
+
+/*
+ * Per-thread scheduler / interrupt accounting. In MODE_SHM this struct lives
+ * in a BPF_F_MMAPABLE array that the application maps read-write; the kernel
+ * side updates it and the application snapshots it with plain loads.
+ */
+struct tstate {
+	__u64 wake_ts;
+	__u64 runnable_ts;
+	__u64 sleep_ts;
+	__u64 oncpu_ts;
+	__u64 oncpu_ns;
+	__u64 runq_ns;
+	__u64 wake_ns;
+	__u64 blocked_ns;
+	__u64 softirq_ns;
+	__u64 hardirq_ns;
+	__u64 last_wake_delay;  /* set at switch-in after a wakeup */
+	__u32 nvcsw;
+	__u32 nivcsw;
+	__u32 nmigr;
+	__u32 nsoftirq;
+	__u32 nhardirq;
+	__u32 on_cpu;
+	__u32 tid;              /* owner of the slot (MODE_SHM) */
+	__u32 pad;
+};
 
 /* one record per completed request, produced at tl_req_end() */
 struct req_rec {
@@ -43,6 +74,7 @@ struct gcounters {
 	__u64 nsoftirq[NSOFTIRQ];
 	__u64 softirq_ns[NSOFTIRQ];
 	__u64 rb_drops;          /* ring buffer reservations that failed */
+	__u64 slot_collisions;   /* MODE_SHM: two target threads mapped to one slot */
 	__u64 rb_records;
 };
 

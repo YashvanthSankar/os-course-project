@@ -26,7 +26,11 @@ BUILD = ROOT / "build"
 TLBENCH = BUILD / "tlbench"
 TLAT = BUILD / "tlat"
 STRESSOR = BUILD / "stressor"
+HICCUP = BUILD / "hiccup"
+NOISE_LIMIT = float(os.environ.get("NOISE_LIMIT", "3.0"))  # % of vCPU time lost
 RAW = ROOT / "data" / "raw"
+PIN = "/sys/fs/bpf/tlat_slots"
+PRIMARY = "shm"   # proposed tracer: trap-free shared per-thread counters
 
 WORKER_CPUS = "0-2"
 GEN_CPU = 3
@@ -66,6 +70,30 @@ def sh(cmd, **kw):
     return subprocess.run(cmd, shell=True, check=False, capture_output=True, text=True, **kw)
 
 
+def measure_noise(dur=1.0):
+    """Platform noise: % of time a spinning thread per vCPU did not run."""
+    out = sh(f"{HICCUP} -d {dur} -t 20").stdout
+    try:
+        d = json.loads(out)
+    except json.JSONDecodeError:
+        return 100.0, {}
+    return max(c["lost_pct"] for c in d["cpus"]), d
+
+
+def wait_quiet():
+    """Block until host interference is below NOISE_LIMIT (noise gate)."""
+    waited = 0
+    while True:
+        lost, d = measure_noise()
+        if lost <= NOISE_LIMIT:
+            return lost, d, waited
+        if waited % 300 == 0:
+            print(f"  host noisy: {lost:.1f}% vCPU time lost (limit {NOISE_LIMIT}%), waiting...",
+                  flush=True)
+        time.sleep(15)
+        waited += 15
+
+
 def set_rps(mask):
     """Steer loopback receive processing (RPS) to the CPUs in mask (hex)."""
     p = Path("/sys/class/net/lo/queues/rx-0/rps_cpus")
@@ -86,10 +114,11 @@ def run_one(exp, run_id, workload, load, tracer, stressor="none", seed=1,
     ready.unlink(missing_ok=True)
     wl = WORKLOADS[workload]
     r = rate if rate is not None else wl["rates"][load]
+    noise_before, _, waited = wait_quiet()
     cond = dict(exp=exp, run_id=run_id, workload=workload, load=load, rate=r,
                 tracer=tracer, stressor=stressor, seed=seed,
                 worker_cpus=worker_cpus, duration=duration, warmup=WARMUP,
-                started=time.time())
+                started=time.time(), noise_before_pct=noise_before, noise_wait_s=waited)
     (out / "cond.json").write_text(json.dumps(cond))
 
     set_rps("7" if stressor == "netflood" else "0")
@@ -103,7 +132,8 @@ def run_one(exp, run_id, workload, load, tracer, stressor="none", seed=1,
         [str(TLBENCH)] + wl["args"] +
         ["-r", str(r), "-d", str(duration), "-W", str(WARMUP), "-s", str(seed),
          "-c", worker_cpus, "-g", str(GEN_CPU), "-o", str(out / "bench.csv"),
-         "-M", str(out / "meta.json"), "-R", str(ready)],
+         "-M", str(out / "meta.json"), "-R", str(ready)] +
+        (["-K", PIN] if tracer == "shm" else []),
         stdout=subprocess.PIPE, text=True)
     bench.stdout.readline()  # "tlbench pid=... ready" once threads exist
     tl = None
@@ -112,7 +142,7 @@ def run_one(exp, run_id, workload, load, tracer, stressor="none", seed=1,
     else:
         tl = subprocess.Popen([str(TLAT), "-p", str(bench.pid), "-b", str(TLBENCH),
                                "-m", tracer, "-o", str(out / "tlat"), "-i", "5",
-                               "-R", str(ready), "-C", str(TRACER_CPU)],
+                               "-R", str(ready), "-C", str(TRACER_CPU), "-K", PIN],
                               stderr=open(out / "tlat.log", "w"))
     rc = bench.wait()
     if tl:
@@ -122,10 +152,12 @@ def run_one(exp, run_id, workload, load, tracer, stressor="none", seed=1,
         stress.wait()
     set_rps("0")
     ready.unlink(missing_ok=True)
+    cond["noise_after_pct"] = measure_noise()[0]
+    (out / "cond.json").write_text(json.dumps(cond))
     meta = json.loads((out / "meta.json").read_text()) if (out / "meta.json").exists() else {}
     print(f"{exp}/{run_id}: rc={rc} thr={meta.get('throughput', 0):.0f}/s "
-          f"done={meta.get('measured')} overflow={meta.get('queue_overflow')}", flush=True)
-    time.sleep(1.0)
+          f"done={meta.get('measured')} noise={noise_before:.1f}/{cond['noise_after_pct']:.1f}%",
+          flush=True)
     return out
 
 
@@ -154,14 +186,14 @@ def exp_calibrate():
     # separate seed range so thresholds never come from evaluation runs
     for wl, d in WORKLOADS.items():
         for load in d["rates"]:
-            run_one("calib", f"{wl}-{load}", wl, load, "attrib", seed=1000)
+            run_one("calib", f"{wl}-{load}", wl, load, PRIMARY, seed=1000)
 
 
 def exp_main():
     plan = []
     for wl, d in WORKLOADS.items():
         for load in d["rates"]:
-            for tracer in ("none", "attrib"):
+            for tracer in ("none", PRIMARY):
                 for rep in range(REPS):
                     plan.append((f"{wl}-{load}-{tracer}-r{rep}", wl, load, tracer, 1 + rep))
     random.Random(7).shuffle(plan)
@@ -172,16 +204,18 @@ def exp_main():
 def exp_overhead():
     plan = []
     for wl in ("cpu", "kv"):
-        for tracer in ("none", "count", "attrib", "stream"):
+        for tracer in ("none", "count", "shm", "attrib", "stream"):
             for rep in range(REPS):
                 plan.append((f"{wl}-{tracer}-r{rep}", wl, tracer, 1 + rep))
     random.Random(11).shuffle(plan)
     for run_id, wl, tracer, seed in plan:
         run_one("overhead", run_id, wl, "max", tracer, seed=seed, rate=0, duration=10)
-    # open-loop streaming at mid load: event loss under the real workload
+    # open loop at mid load: event loss of streaming, and the uprobe variant
+    # of the per-request attribution (feature equivalence with shm)
     for wl in ("cpu", "kv"):
         for rep in range(3):
             run_one("overhead", f"{wl}-stream-open-r{rep}", wl, "mid", "stream", seed=1 + rep)
+            run_one("overhead", f"{wl}-attrib-open-r{rep}", wl, "mid", "attrib", seed=1 + rep)
 
 
 def exp_interventions():
@@ -204,7 +238,7 @@ def exp_interventions():
         rate = None
         if cpus == "1-2":
             rate = int(WORKLOADS[wl]["rates"]["mid"] * 2 / 3)
-        run_one("interv", run_id, wl, "mid", "attrib", stressor=st, seed=seed,
+        run_one("interv", run_id, wl, "mid", PRIMARY, stressor=st, seed=seed,
                 worker_cpus=cpus, rate=rate)
 
 

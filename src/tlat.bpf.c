@@ -32,26 +32,6 @@ char LICENSE[] SEC("license") = "GPL";
 const volatile __u32 target_tgid = 0;
 const volatile __u32 mode = MODE_ATTRIB;
 
-struct tstate {
-	__u64 wake_ts;
-	__u64 runnable_ts;
-	__u64 sleep_ts;
-	__u64 oncpu_ts;
-	__u64 oncpu_ns;
-	__u64 runq_ns;
-	__u64 wake_ns;
-	__u64 blocked_ns;
-	__u64 softirq_ns;
-	__u64 hardirq_ns;
-	__u64 last_wake_delay;
-	__u32 nvcsw;
-	__u32 nivcsw;
-	__u32 nmigr;
-	__u32 nsoftirq;
-	__u32 nhardirq;
-	__u32 on_cpu;
-};
-
 struct begin_snap {
 	__u64 id;
 	__u64 ts;
@@ -80,6 +60,15 @@ struct {
 	__type(key, __u32);
 	__type(value, struct begin_snap);
 } begins SEC(".maps");
+
+/* MODE_SHM: shared with the application through mmap() */
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(map_flags, BPF_F_MMAPABLE);
+	__uint(max_entries, NSLOTS);
+	__type(key, __u32);
+	__type(value, struct tstate);
+} slots SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -111,8 +100,39 @@ static __always_inline int is_target(struct task_struct *p)
 	return BPF_CORE_READ(p, tgid) == target_tgid;
 }
 
+static __always_inline struct tstate *slot_ts(__u32 tid, int claim)
+{
+	__u32 i = tid & (NSLOTS - 1);
+	struct tstate *s = bpf_map_lookup_elem(&slots, &i);
+	if (!s)
+		return NULL;
+	if (s->tid == tid)
+		return s;
+	if (s->tid == 0 && claim) {
+		s->tid = tid;
+		return s;
+	}
+	if (claim) {
+		struct gcounters *g = gc();
+		if (g)
+			g->slot_collisions++;
+	}
+	return NULL;
+}
+
+/* existing per-thread state, or NULL */
+static __always_inline struct tstate *find_ts(__u32 tid)
+{
+	if (mode == MODE_SHM)
+		return slot_ts(tid, 0);
+	return bpf_map_lookup_elem(&tstates, &tid);
+}
+
+/* per-thread state, created on first use */
 static __always_inline struct tstate *get_ts(__u32 tid)
 {
+	if (mode == MODE_SHM)
+		return slot_ts(tid, 1);
 	struct tstate *s = bpf_map_lookup_elem(&tstates, &tid);
 	if (s)
 		return s;
@@ -302,7 +322,7 @@ int BPF_PROG(on_softirq_exit, unsigned int vec_nr)
 		stream(EV_SOFTIRQ, tid, d, now);
 		return 0;
 	}
-	struct tstate *s = bpf_map_lookup_elem(&tstates, &tid);
+	struct tstate *s = find_ts(tid);
 	if (s) {
 		s->softirq_ns += d;
 		s->nsoftirq++;
@@ -343,7 +363,7 @@ int BPF_PROG(on_irq_exit, int irq, struct irqaction *action, int ret)
 		stream(EV_HARDIRQ, tid, d, now);
 		return 0;
 	}
-	struct tstate *s = bpf_map_lookup_elem(&tstates, &tid);
+	struct tstate *s = find_ts(tid);
 	if (s) {
 		s->hardirq_ns += d;
 		s->nhardirq++;
@@ -392,7 +412,7 @@ int BPF_UPROBE(req_end, __u64 id)
 		stream(EV_REQ_END, tid, id, now);
 		return 0;
 	}
-	struct tstate *s = bpf_map_lookup_elem(&tstates, &tid);
+	struct tstate *s = find_ts(tid);
 	struct begin_snap *b = bpf_map_lookup_elem(&begins, &tid);
 	if (!s || !b || b->id != id)
 		return 0;

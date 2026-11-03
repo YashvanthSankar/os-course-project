@@ -400,7 +400,7 @@ latency = queueing (waiting behind earlier requests — application/load)
 ## Papers to read (all real; start with the first three)
 
 1. Li, Sharma, Ports, Gribble. *Tales of the Tail: Hardware, OS, and Application-level Sources of Tail Latency.* ACM SoCC 2014. **The closest paper to our project. Read it fully.**
-2. Zhang, Meisner, Mars, Tang. *Treadmill: Attributing the Source of Tail Latency through Precise Load Testing and Statistical Inference.* ISCA 2016. Covers how to measure tails correctly and how to attribute them with statistics.
+2. Zhang, Meisner, Mars. *Treadmill: Attributing the Source of Tail Latency through Precise Load Testing and Statistical Inference.* ISCA 2016. Covers how to measure tails correctly and how to attribute them with statistics.
 3. Zhou, Gan, Ma, Wang. *wPerf: Generic Off-CPU Analysis to Identify Bottleneck Waiting Events.* OSDI 2018. Off-CPU and waiting analysis from scheduler events; it also reports ~5% tracing overhead, which is a good comparison point.
 4. Lozi et al. *The Linux Scheduler: a Decade of Wasted Cores.* EuroSys 2016. Shows the scheduler itself causing delay.
 5. Fried, Ruan, Ousterhout, Belay. *Caladan: Mitigating Interference at Microsecond Timescales.* OSDI 2020. Covers *fixing* interference by watching fast signals (queueing delay), which is the "early warning" idea in production form.

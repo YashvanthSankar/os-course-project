@@ -21,6 +21,8 @@
  */
 #define _GNU_SOURCE
 #include <arpa/inet.h>
+#include <linux/bpf.h>
+#include <linux/types.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -36,12 +38,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "tlat.h"
 
 #define MAX_WORKERS 64
 #define QCAP (1u << 16)
@@ -66,6 +71,7 @@ struct cfg {
 	int gen_cpu;
 	int port;
 	int conns_per_worker;
+	const char *slot_pin;  /* MODE_SHM pinned map; NULL = not used */
 } C = {
 	.mode = M_CPU, .workers = 3, .rate = 10000, .duration = 20, .warmup = 2,
 	.seed = 1, .work_us = 100, .out = "bench.csv", .meta = NULL,
@@ -75,13 +81,27 @@ struct cfg {
 };
 
 struct rec {
-	uint64_t t_arr, t_start, t_end, t_done;
+	uint64_t t_arr, t_enq, t_start, t_end, t_done;
 	uint32_t tid;
 	uint16_t cpu;
 	uint16_t valid;
 };
 
+/* kernel-maintained per-thread counters, read from the shared map */
+struct ksnap {
+	uint64_t runq, wake, blocked, soft, hard;
+	uint32_t nvcsw, nivcsw, nmigr, nsoft, nhard;
+};
+
+struct kfeat {
+	struct ksnap d;      /* end - begin */
+	uint64_t pre_wake;
+	uint32_t ok;
+};
+
 static struct rec *recs;
+static struct kfeat *kf;               /* parallel to recs when slots used */
+static volatile struct tstate *slots;
 static uint64_t max_reqs;
 static atomic_uint_fast64_t next_id;  /* closed loop id source */
 static atomic_int stop_flag;
@@ -111,6 +131,94 @@ static inline uint64_t now_ns(void)
 }
 
 static inline pid_t gettid_(void) { return (pid_t)syscall(SYS_gettid); }
+
+static int bpf_obj_get_path(const char *path)
+{
+	union bpf_attr attr;
+	memset(&attr, 0, sizeof(attr));
+	attr.pathname = (__u64)(uintptr_t)path;
+	return (int)syscall(SYS_bpf, BPF_OBJ_GET, &attr, sizeof(attr));
+}
+
+static void map_slots(const char *pin)
+{
+	int fd = bpf_obj_get_path(pin);
+	if (fd < 0) {
+		perror("bpf_obj_get slots");
+		exit(1);
+	}
+	size_t len = NSLOTS * sizeof(struct tstate);
+	long pg = sysconf(_SC_PAGESIZE);
+	len = (len + pg - 1) / pg * pg;
+	void *p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (p == MAP_FAILED) {
+		perror("mmap slots");
+		exit(1);
+	}
+	slots = p;
+}
+
+static inline volatile struct tstate *my_slot(pid_t tid)
+{
+	return slots ? &slots[tid & (NSLOTS - 1)] : NULL;
+}
+
+static inline void ksnap_take(struct ksnap *k, volatile struct tstate *s)
+{
+	k->runq = s->runq_ns;
+	k->wake = s->wake_ns;
+	k->blocked = s->blocked_ns;
+	k->soft = s->softirq_ns;
+	k->hard = s->hardirq_ns;
+	k->nvcsw = s->nvcsw;
+	k->nivcsw = s->nivcsw;
+	k->nmigr = s->nmigr;
+	k->nsoft = s->nsoftirq;
+	k->nhard = s->nhardirq;
+}
+
+/* begin/end of a request window as seen through the shared counters */
+struct kwin {
+	volatile struct tstate *s;
+	struct ksnap a;
+	uint64_t pre;
+	int ok;
+};
+
+static inline void kwin_begin(struct kwin *w, pid_t tid)
+{
+	w->s = my_slot(tid);
+	w->ok = w->s && w->s->tid == (uint32_t)tid;
+	if (w->ok) {
+		ksnap_take(&w->a, w->s);
+		w->pre = w->s->last_wake_delay;
+	} else {
+		memset(&w->a, 0, sizeof(w->a));
+		w->pre = 0;
+	}
+}
+
+static inline void kwin_end(struct kwin *w, uint64_t id)
+{
+	if (!w->ok || !kf || id >= max_reqs)
+		return;
+	struct ksnap b;
+	ksnap_take(&b, w->s);
+	w->s->last_wake_delay = 0;
+	struct kfeat *f = &kf[id];
+	f->d.runq = b.runq - w->a.runq;
+	f->d.wake = b.wake - w->a.wake;
+	f->d.blocked = b.blocked - w->a.blocked;
+	f->d.soft = b.soft - w->a.soft;
+	f->d.hard = b.hard - w->a.hard;
+	f->d.nvcsw = b.nvcsw - w->a.nvcsw;
+	f->d.nivcsw = b.nivcsw - w->a.nivcsw;
+	f->d.nmigr = b.nmigr - w->a.nmigr;
+	f->d.nsoft = b.nsoft - w->a.nsoft;
+	f->d.nhard = b.nhard - w->a.nhard;
+	f->pre_wake = w->pre;
+	f->ok = 1;
+}
 
 /* splitmix64: small, seedable, good enough for arrivals and keys */
 static inline uint64_t sm64(uint64_t *s)
@@ -222,7 +330,7 @@ static void do_kv(uint64_t *s, uint64_t *wcount)
 }
 
 /* ---------------- request queue (cpu / kv) ------------------------ */
-struct qitem { uint64_t id, t_arr; };
+struct qitem { uint64_t id, t_arr, t_enq; };
 static struct qitem q[QCAP];
 static uint32_t qhead, qtail;
 static pthread_mutex_t qlock = PTHREAD_MUTEX_INITIALIZER;
@@ -245,19 +353,24 @@ static void pin_self_to_cpu(int cpu)
 	pthread_setaffinity_np(pthread_self(), sizeof(s), &s);
 }
 
-static void serve_one(uint64_t id, uint64_t t_arr, uint64_t *rng, uint64_t *wcount, pid_t tid)
+static void serve_one(uint64_t id, uint64_t t_arr, uint64_t t_enq, uint64_t *rng,
+		      uint64_t *wcount, pid_t tid)
 {
+	struct kwin kw;
 	uint64_t t0 = now_ns();
 	tl_req_begin(id);
+	kwin_begin(&kw, tid);
 	if (C.mode == M_KV)
 		do_kv(rng, wcount);
 	else
 		do_compute(C.work_us, id);
+	kwin_end(&kw, id);
 	tl_req_end(id);
 	uint64_t t1 = now_ns();
 	if (id < max_reqs) {
 		struct rec *r = &recs[id];
 		r->t_arr = t_arr;
+		r->t_enq = t_enq;
 		r->t_start = t0;
 		r->t_end = t1;
 		r->t_done = t1;
@@ -284,7 +397,7 @@ static void *queue_worker(void *arg)
 		struct qitem it = q[qhead % QCAP];
 		qhead++;
 		pthread_mutex_unlock(&qlock);
-		serve_one(it.id, it.t_arr, &rng, &wcount, tid);
+		serve_one(it.id, it.t_arr, it.t_enq, &rng, &wcount, tid);
 	}
 	return NULL;
 }
@@ -299,20 +412,19 @@ static void *closed_worker(void *arg)
 		uint64_t id = atomic_fetch_add(&next_id, 1);
 		if (id >= max_reqs)
 			break;
-		serve_one(id, now_ns(), &rng, &wcount, tid);
+		uint64_t t = now_ns();
+		serve_one(id, t, t, &rng, &wcount, tid);
 	}
 	return NULL;
 }
 
-/* Sleep until absolute time t; spin for the last stretch for accuracy. */
+/*
+ * Busy-wait until absolute time t. The generator never sleeps: in a VM an
+ * idle vCPU is parked by the host and wakes late, which turns into bursty,
+ * late arrivals (measured in the pilot as multi-millisecond lateness).
+ */
 static void wait_until(uint64_t t)
 {
-	uint64_t n = now_ns();
-	if (t > n + 60000) {
-		uint64_t tgt = t - 50000;
-		struct timespec ts = { .tv_sec = tgt / 1000000000ull, .tv_nsec = tgt % 1000000000ull };
-		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL);
-	}
 	while (now_ns() < t)
 		__asm__ volatile("" ::: "memory");
 }
@@ -331,7 +443,7 @@ static void run_generator_queue(void)
 		wait_until(ta);
 		pthread_mutex_lock(&qlock);
 		if (qtail - qhead < QCAP) {
-			q[qtail % QCAP] = (struct qitem){ id, ta };
+			q[qtail % QCAP] = (struct qitem){ id, ta, now_ns() };
 			qtail++;
 		} else {
 			q_overflow++;
@@ -392,9 +504,12 @@ static void *net_server_worker(void *arg)
 					break;
 				if (read_full(fd, &m, sizeof(m)) <= 0)
 					break;
+				struct kwin kw;
 				uint64_t t0 = now_ns();
 				tl_req_begin(m.id);
+				kwin_begin(&kw, tid);
 				do_compute(C.work_us, m.id);
+				kwin_end(&kw, m.id);
 				tl_req_end(m.id);
 				uint64_t t1 = now_ns();
 				if (m.id < max_reqs) {
@@ -490,6 +605,8 @@ static void run_generator_net(void)
 		wait_until(ta);
 		struct msg m = { id, ta };
 		int fd = cli_fds[id % ncli];
+		if (id < max_reqs)
+			recs[id].t_enq = now_ns();
 		if (write(fd, &m, sizeof(m)) != sizeof(m))
 			perror("client write");
 	}
@@ -533,13 +650,14 @@ static void usage(const char *p)
 		"  -R FILE          wait for FILE to exist before starting load\n"
 		"  -f FILE          kv data file (/var/tmp/tlbench.dat)\n"
 		"  -S N             kv: fdatasync every N requests per worker (200)\n"
-		"  -L N             kv: lookups per request (8)\n", p);
+		"  -L N             kv: lookups per request (8)\n"
+		"  -K PIN           read per-thread kernel counters from pinned map PIN\n", p);
 }
 
 int main(int argc, char **argv)
 {
 	int opt;
-	while ((opt = getopt(argc, argv, "m:w:r:d:W:s:u:c:g:o:M:R:f:S:L:p:h")) != -1) {
+	while ((opt = getopt(argc, argv, "m:w:r:d:W:s:u:c:g:o:M:R:f:S:L:p:K:h")) != -1) {
 		switch (opt) {
 		case 'm':
 			C.mode = !strcmp(optarg, "kv") ? M_KV : !strcmp(optarg, "net") ? M_NET : M_CPU;
@@ -559,6 +677,7 @@ int main(int argc, char **argv)
 		case 'S': C.sync_every = atoi(optarg); break;
 		case 'L': C.lookups = atoi(optarg); break;
 		case 'p': C.port = atoi(optarg); break;
+		case 'K': C.slot_pin = optarg; break;
 		default: usage(argv[0]); return 2;
 		}
 	}
@@ -573,9 +692,14 @@ int main(int argc, char **argv)
 	}
 
 	double tot = C.warmup + C.duration;
-	max_reqs = C.rate > 0 ? (uint64_t)(C.rate * tot * 1.3) + 1024 : 20000000ull;
+	max_reqs = C.rate > 0 ? (uint64_t)(C.rate * tot * 1.3) + 1024
+			      : (uint64_t)(160000 * tot) + 1024;
 	recs = calloc(max_reqs, sizeof(*recs));
 	if (!recs) { perror("calloc recs"); return 1; }
+	if (C.slot_pin) {
+		kf = calloc(max_reqs, sizeof(*kf));
+		if (!kf) { perror("calloc kf"); return 1; }
+	}
 
 	calibrate();
 	if (C.mode == M_KV)
@@ -597,6 +721,8 @@ int main(int argc, char **argv)
 		while (stat(C.ready_file, &st) != 0)
 			usleep(10000);
 	}
+	if (C.slot_pin)
+		map_slots(C.slot_pin);
 
 	struct rusage ru0, ru1;
 	getrusage(RUSAGE_SELF, &ru0);
@@ -637,7 +763,9 @@ int main(int argc, char **argv)
 	FILE *f = fopen(C.out, "w");
 	if (!f) { perror("fopen out"); return 1; }
 	setvbuf(f, NULL, _IOFBF, 1 << 22);
-	fprintf(f, "id,tid,cpu,t_arr,t_start,t_end,t_done,warm\n");
+	fprintf(f, "id,tid,cpu,t_arr,t_enq,t_start,t_end,t_done,warm%s\n",
+		kf ? ",pre_wake_ns,runq_ns,wake_ns,blocked_ns,softirq_ns,hardirq_ns,"
+		     "nvcsw,nivcsw,nmigr,nsoftirq,nhardirq,kvalid" : "");
 	uint64_t n_done = 0, n_meas = 0, n_lost = 0;
 	uint64_t warm_end = t_origin + (uint64_t)(C.warmup * 1e9);
 	uint64_t lim = C.rate > 0 ? max_reqs : atomic_load(&next_id);
@@ -653,10 +781,20 @@ int main(int argc, char **argv)
 		int warm = r->t_arr < warm_end;
 		n_done++;
 		n_meas += !warm;
-		fprintf(f, "%llu,%u,%u,%llu,%llu,%llu,%llu,%d\n",
+		fprintf(f, "%llu,%u,%u,%llu,%llu,%llu,%llu,%llu,%d",
 			(unsigned long long)i, r->tid, r->cpu,
-			(unsigned long long)r->t_arr, (unsigned long long)r->t_start,
+			(unsigned long long)r->t_arr, (unsigned long long)r->t_enq,
+			(unsigned long long)r->t_start,
 			(unsigned long long)r->t_end, (unsigned long long)r->t_done, warm);
+		if (kf) {
+			struct kfeat *k = &kf[i];
+			fprintf(f, ",%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u",
+				(unsigned long long)k->pre_wake, (unsigned long long)k->d.runq,
+				(unsigned long long)k->d.wake, (unsigned long long)k->d.blocked,
+				(unsigned long long)k->d.soft, (unsigned long long)k->d.hard,
+				k->d.nvcsw, k->d.nivcsw, k->d.nmigr, k->d.nsoft, k->d.nhard, k->ok);
+		}
+		fputc('\n', f);
 	}
 	fclose(f);
 
