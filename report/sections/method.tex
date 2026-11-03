@@ -12,8 +12,7 @@ path: \textbf{cpu} (100\,$\mu$s of fixed computation, woken through a
 condition variable); \textbf{kv} (8 lookups in a 64\,MiB hash table, a
 4\,KiB \texttt{pread}, 20\,$\mu$s of computation, and a \texttt{pwrite}+\texttt{fdatasync} every 200
 requests); and \textbf{net} (loopback TCP to epoll-driven server threads,
-50\,$\mu$s of work, 12 connections). Each class runs at three loads,
-roughly 30/50/70\% of measured capacity. The generator busy-waits instead
+50\,$\mu$s of work, 12 connections). Each class runs at three loads (cpu 7/12/17k, kv 30/50/70k, net 10/17/24k req/s), which keep worker utilization between 17\% and 57\%. The generator busy-waits instead
 of sleeping: in our pilot, a sleeping generator woke late on an idle vCPU
 and produced late, bursty arrivals, which is the pitfall Treadmill
 describes~\cite{zhang2016treadmill}. Latency is therefore measured from
@@ -22,8 +21,7 @@ separately.
 
 \textbf{Noise gate.} Host preemption of vCPUs is invisible to the guest. A
 meter, \texttt{hiccup}, spins one thread per vCPU and records gaps in its
-own execution. A run starts only when every vCPU loses less than 3\% of its
-time, and the measurements before and after each run are stored with it.
+own execution. A run starts only when every vCPU loses less than 5\% of its time (3\% for the first eight runs), and the measurements before and after each run are stored with it.
 
 \subsection{Kernel telemetry}
 \label{sec:telemetry}
@@ -83,9 +81,7 @@ part. A tail request is attributed to the component with the largest
 excess over the median of non-tail requests in the same run.
 
 \subsection{Detection and attribution analysis}
-A tail request is one whose latency exceeds the p99 of a separate
-calibration run (seed 1000, never evaluated) for the same workload and
-load. Features are the 11 per-window counters plus the 3 inherited terms.
+A tail request is one whose latency exceeds the median p99 of five separate calibration runs (seeds 1000--1004, never evaluated) for the same workload and load. Features are the 11 per-window counters plus the 3 inherited terms.
 Durations are divided by the tail threshold so that values are comparable
 across workloads, and all features are $\log(1{+}x)$ transformed. We compare
 an interpretable rule (total OS delay $>\tau$), logistic regression and a
@@ -96,8 +92,7 @@ cpu/kv runs (repetitions 0--2) and tested on unseen repetitions (3--4) and
 on the \textbf{net} workload, which is never used for training or feature
 choice. We report PR-AUC with run-level bootstrap 95\% CIs, precision,
 recall and F1 at the F1-optimal training threshold, and false alarms per
-minute. All normal requests are evaluated through 5\% weighted
-subsampling.
+minute. For memory reasons we keep 5\% of normal and at most 20\,000 tail requests per run, with inverse-probability weights in every metric.
 
 \textbf{Interventions (H2).} At mid load we add one stressor at a time,
 five repetitions each, in randomized order:
@@ -109,5 +104,4 @@ and an affinity change (a hog on CPU~0 with workers on CPUs 0--2, versus
 workers moved to CPUs 1--2 at 2/3 of the rate, so that per-CPU load is
 equal). For each stressor we state the expected signature in advance (hog
 $\to$ sched, flood $\to$ irq, I/O $\to$ blocked, moving the workers $\to$
-less sched). We then test it against the control with a one-sided
-Mann--Whitney U test over the per-run p99 of that component.
+less sched). We then test it against the control with a one-sided Mann--Whitney U test on the per-run mean of that delay per request.

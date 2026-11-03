@@ -1,2 +1,20 @@
 \section{Conclusion}
-Placeholder.
+\label{sec:conclusion}
+\sys{} shows that per-request attribution of OS-induced delay does not
+require a trap per request. Per-thread accounting kept by tracepoint
+programs and read through a shared BPF map costs about as much as plain
+event counters, and its accounting closes. The evaluation gives a more
+nuanced answer than our hypothesis. Within a known workload, queueing
+explains most tail requests, and any signal that tracks load (including
+aggregate counts) detects them. The value of request-aligned kernel
+telemetry shows up in two places: it generalizes to a workload not seen
+during training, and it names the cause. Controlled interventions moved
+exactly the predicted delay component in seven of nine cases. The
+remaining cases, together with the client-side receiver delay of the net
+workload, show where the method stops: OS delay on threads outside the
+request window, and host effects invisible to the guest. Future work is
+to extend windows across all threads a request touches, to model
+per-socket queues, and to repeat the study on bare metal. As a by-product,
+we prepared a patch that lets bcc's \texttt{runqlat} separate wakeup
+latency from preemption latency, the distinction our intervention results
+relied on.

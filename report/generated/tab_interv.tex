@@ -1,0 +1,13 @@
+\begin{table}[t]\centering\caption{Interventions (H2), 5 runs per condition at mid load. Predicted component: mean own-window delay per request ($\mu$s), control $\to$ intervention; one-sided Mann--Whitney $p$; p99 change.}\label{tab:interv}\footnotesize\setlength{\tabcolsep}{2.4pt}
+\begin{tabular}{llrrrr}\toprule
+wl & intervention & signal & control $\to$ interv. & $p$ & p99\\\midrule
+cpu & CPU hog & sched & 1.1 $\to$ 31.8 & 0.004 & 11.8$\times$ \\
+cpu & softirq flood & irq & 0.3 $\to$ 0.4 & 0.048 & 8.7$\times$ \\
+cpu & I/O writer & blocked & 0.0 $\to$ 0.0 & 1.000 & 1.7$\times$ \\
+cpu & move workers off hog & sched & 2.4 $\to$ 1.1 & 0.004 & 0.2$\times$ \\
+kv & CPU hog & sched & 0.5 $\to$ 8.8 & 0.004 & 18.2$\times$ \\
+kv & softirq flood & irq & 0.1 $\to$ 0.1 & 0.210 & 8.2$\times$ \\
+kv & I/O writer & blocked & 0.8 $\to$ 4.5 & 0.004 & 195.5$\times$ \\
+kv & move workers off hog & sched & 1.5 $\to$ 0.8 & 0.048 & 0.1$\times$ \\
+net & CPU hog & sched & 1.1 $\to$ 50.7 & 0.004 & 2.2$\times$ \\
+\bottomrule\end{tabular}\end{table}
