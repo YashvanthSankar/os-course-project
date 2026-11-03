@@ -1,0 +1,113 @@
+\section{Methodology}
+\label{sec:method}
+
+\subsection{Testbed and workloads}
+All experiments run in an Ubuntu 24.04 VM (Linux 6.8.0, 4 vCPUs, 6\,GiB)
+under the macOS Virtualization framework on an Apple M3 Pro. Worker threads
+are restricted to CPUs 0--2, and the load generator and collector are
+pinned to CPU~3. Our benchmark, \texttt{tlbench}, generates open-loop
+Poisson arrivals with a fixed seed. Every request carries a stable integer
+id and is served by one of three workers. Three workload classes share this
+path: \textbf{cpu} (100\,$\mu$s of fixed computation, woken through a
+condition variable); \textbf{kv} (8 lookups in a 64\,MiB hash table, a
+4\,KiB \texttt{pread}, 20\,$\mu$s of computation, and a \texttt{pwrite}+\texttt{fdatasync} every 200
+requests); and \textbf{net} (loopback TCP to epoll-driven server threads,
+50\,$\mu$s of work, 12 connections). Each class runs at three loads,
+roughly 30/50/70\% of measured capacity. The generator busy-waits instead
+of sleeping: in our pilot, a sleeping generator woke late on an idle vCPU
+and produced late, bursty arrivals, which is the pitfall Treadmill
+describes~\cite{zhang2016treadmill}. Latency is therefore measured from
+actual injection to completion, and generator lateness is logged
+separately.
+
+\textbf{Noise gate.} Host preemption of vCPUs is invisible to the guest. A
+meter, \texttt{hiccup}, spins one thread per vCPU and records gaps in its
+own execution. A run starts only when every vCPU loses less than 3\% of its
+time, and the measurements before and after each run are stored with it.
+
+\subsection{Kernel telemetry}
+\label{sec:telemetry}
+\sys{} attaches BTF-typed tracepoint programs to \texttt{sched\_switch},
+\texttt{sched\_wakeup[\_new]}, \texttt{sched\_migrate\_task},
+\texttt{softirq\_entry/exit} and \texttt{irq\_handler\_entry/exit}. For
+each thread of the target process, a small state machine keeps cumulative
+counters:
+(i)~\emph{preemption wait}, from a switch-out while still runnable
+(\texttt{prev\_state}=\texttt{TASK\_RUNNING}) to the next switch-in;
+(ii)~\emph{wakeup delay}, from \texttt{sched\_wakeup} to switch-in;
+(iii)~\emph{blocked time}, from a voluntary switch-out to the wakeup;
+(iv)~on-CPU time; (v)~hard and soft IRQ time charged to the
+\emph{interrupted} thread, which is the current task in IRQ context; and
+(vi)~counts of voluntary and involuntary switches, migrations and IRQs.
+Wakeups of a task that is already running or queued are ignored. Every
+program filters on the TGID first, so other tasks cost one comparison. All
+programs also update system-wide per-CPU counters (switches, involuntary
+switches, wakeups, migrations, hardirqs, softirqs per vector), which the
+collector samples every 5\,ms together with PSI. This is the
+\emph{aggregate event-count} baseline.
+
+\subsection{Joining requests to kernel state}
+We compare three ways to align a request window with the counters.
+\textbf{Uprobe windows} attach uprobes to two empty functions,
+\texttt{tl\_req\_begin}/\texttt{tl\_req\_end}. The begin probe snapshots
+the thread's counters in the kernel, and the end probe emits one 120-byte
+record of differences through a ring buffer. This needs no change to the
+application but costs two traps per request. \textbf{Per-event streaming}
+sends every matching scheduler and IRQ event to user space for offline
+joining. \textbf{Shared counters}, the design we propose, keep the
+per-thread state in a \texttt{BPF\_F\_MMAPABLE} array (4096 slots, indexed
+by $\mathit{tid} \bmod 4096$, with the owning tid checked). The application
+maps the pinned array and snapshots its own slot with ordinary loads at
+request begin and end. Because \texttt{bpf\_ktime\_get\_ns} and
+\texttt{CLOCK\_MONOTONIC} are the same clock, the running on-CPU segment can
+be closed in user space. No trap, syscall or record happens per request;
+kernel work happens only when a scheduler or IRQ event actually affects a
+target thread.
+
+\textbf{Validation.} For each request we check the identity
+$t_\mathrm{end}-t_\mathrm{start} = \mathit{oncpu}+\mathit{runq}+\mathit{wake}+\mathit{blocked}$,
+whose four terms come from different tracepoints.
+
+\subsection{Per-request decomposition}
+Latency is split into: \emph{sched} (wakeup delay before service, plus
+preemption and wakeup waits during service); \emph{irq}; \emph{blocked};
+\emph{exec} (on-CPU time minus IRQ time); and \emph{queue} (waiting for a
+worker). A request queued behind a request that was preempted is late
+because of an OS event it never saw itself. We therefore compute
+\emph{inherited} delay: for request $i$, the significant OS delay (above
+10\,$\mu$s per request, so that many small delays cannot add up to a proxy
+for queue length) of all requests that completed during $i$'s queue wait,
+divided by the number of workers. The queue term is split into inherited
+sched/irq/blocked parts, capped at the wait, and a remaining \emph{load}
+part. A tail request is attributed to the component with the largest
+excess over the median of non-tail requests in the same run.
+
+\subsection{Detection and attribution analysis}
+A tail request is one whose latency exceeds the p99 of a separate
+calibration run (seed 1000, never evaluated) for the same workload and
+load. Features are the 11 per-window counters plus the 3 inherited terms.
+Durations are divided by the tail threshold so that values are comparable
+across workloads, and all features are $\log(1{+}x)$ transformed. We compare
+an interpretable rule (total OS delay $>\tau$), logistic regression and a
+random forest (150 trees, depth 10), each on aligned features, on aggregate
+counts over 5/20/100\,ms windows, and on a \emph{queueing-only control}
+(requests completed during the wait). Models are trained on complete
+cpu/kv runs (repetitions 0--2) and tested on unseen repetitions (3--4) and
+on the \textbf{net} workload, which is never used for training or feature
+choice. We report PR-AUC with run-level bootstrap 95\% CIs, precision,
+recall and F1 at the F1-optimal training threshold, and false alarms per
+minute. All normal requests are evaluated through 5\% weighted
+subsampling.
+
+\textbf{Interventions (H2).} At mid load we add one stressor at a time,
+five repetitions each, in randomized order:
+a bursty CPU hog on the worker CPUs (40\% duty per 10\,ms);
+a softirq flood (UDP over loopback sent from CPU~3, with RPS steering
+receive processing to CPUs 0--2);
+an I/O writer (1\,MiB writes with \texttt{fdatasync});
+and an affinity change (a hog on CPU~0 with workers on CPUs 0--2, versus
+workers moved to CPUs 1--2 at 2/3 of the rate, so that per-CPU load is
+equal). For each stressor we state the expected signature in advance (hog
+$\to$ sched, flood $\to$ irq, I/O $\to$ blocked, moving the workers $\to$
+less sched). We then test it against the control with a one-sided
+Mann--Whitney U test over the per-run p99 of that component.

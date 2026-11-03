@@ -307,6 +307,11 @@ static void kv_init(void)
 		free(buf);
 		fsync(kv_fd);
 	}
+	/* warm the page cache so every run starts from the same state */
+	char *buf = malloc(1 << 20);
+	for (off_t o = 0; o < kv_file_size; o += 1 << 20)
+		if (pread(kv_fd, buf, 1 << 20, o) < 0) { perror("pread warm"); exit(1); }
+	free(buf);
 }
 
 static void do_kv(uint64_t *s, uint64_t *wcount)
