@@ -69,6 +69,7 @@ struct cfg {
 	int lookups;           /* kv: hash lookups per request */
 	char worker_cpus[64];
 	int gen_cpu;
+	int rcv_cpu;           /* net client receiver; -1 = same as gen_cpu */
 	int port;
 	int conns_per_worker;
 	const char *slot_pin;  /* MODE_SHM pinned map; NULL = not used */
@@ -76,7 +77,7 @@ struct cfg {
 	.mode = M_CPU, .workers = 3, .rate = 10000, .duration = 20, .warmup = 2,
 	.seed = 1, .work_us = 100, .out = "bench.csv", .meta = NULL,
 	.ready_file = NULL, .datafile = "/var/tmp/tlbench.dat",
-	.sync_every = 200, .lookups = 8, .worker_cpus = "", .gen_cpu = -1,
+	.sync_every = 200, .lookups = 8, .worker_cpus = "", .gen_cpu = -1, .rcv_cpu = -1,
 	.port = 47011, .conns_per_worker = 4,
 };
 
@@ -545,7 +546,7 @@ static void *net_client_receiver(void *arg)
 		struct epoll_event ev = { .events = EPOLLIN, .data.fd = cli_fds[i] };
 		epoll_ctl(ep, EPOLL_CTL_ADD, cli_fds[i], &ev);
 	}
-	pin_self_to_cpu(C.gen_cpu);
+	pin_self_to_cpu(C.rcv_cpu >= 0 ? C.rcv_cpu : C.gen_cpu);
 	struct epoll_event evs[64];
 	while (!atomic_load(&stop_flag)) {
 		int n = epoll_wait(ep, evs, 64, 100);
@@ -655,6 +656,7 @@ static void usage(const char *p)
 		"  -u US            compute per request in microseconds (100)\n"
 		"  -c CPUS          worker cpu list, e.g. 0-2\n"
 		"  -g CPU           generator / client cpu\n"
+		"  -G CPU           net: client receiver cpu (default: same as -g)\n"
 		"  -o FILE          per-request csv (bench.csv)\n"
 		"  -M FILE          run metadata json\n"
 		"  -R FILE          wait for FILE to exist before starting load\n"
@@ -667,7 +669,7 @@ static void usage(const char *p)
 int main(int argc, char **argv)
 {
 	int opt;
-	while ((opt = getopt(argc, argv, "m:w:r:d:W:s:u:c:g:o:M:R:f:S:L:p:K:h")) != -1) {
+	while ((opt = getopt(argc, argv, "m:w:r:d:W:s:u:c:g:G:o:M:R:f:S:L:p:K:h")) != -1) {
 		switch (opt) {
 		case 'm':
 			C.mode = !strcmp(optarg, "kv") ? M_KV : !strcmp(optarg, "net") ? M_NET : M_CPU;
@@ -680,6 +682,7 @@ int main(int argc, char **argv)
 		case 'u': C.work_us = atof(optarg); break;
 		case 'c': snprintf(C.worker_cpus, sizeof(C.worker_cpus), "%s", optarg); break;
 		case 'g': C.gen_cpu = atoi(optarg); break;
+		case 'G': C.rcv_cpu = atoi(optarg); break;
 		case 'o': C.out = optarg; break;
 		case 'M': C.meta = optarg; break;
 		case 'R': C.ready_file = optarg; break;
