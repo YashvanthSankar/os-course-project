@@ -105,7 +105,7 @@ def set_rps(mask):
 
 
 def run_one(exp, run_id, workload, load, tracer, stressor="none", seed=1,
-            rate=None, worker_cpus=WORKER_CPUS, duration=DURATION):
+            rate=None, worker_cpus=WORKER_CPUS, duration=DURATION, extra=()):
     out = RAW / exp / run_id
     if (out / "meta.json").exists():
         print(f"skip {exp}/{run_id} (done)")
@@ -118,7 +118,7 @@ def run_one(exp, run_id, workload, load, tracer, stressor="none", seed=1,
     noise_before, _, waited = wait_quiet()
     cond = dict(exp=exp, run_id=run_id, workload=workload, load=load, rate=r,
                 tracer=tracer, stressor=stressor, seed=seed,
-                worker_cpus=worker_cpus, duration=duration, warmup=WARMUP,
+                worker_cpus=worker_cpus, duration=duration, warmup=WARMUP, extra=list(extra),
                 started=time.time(), noise_before_pct=noise_before, noise_wait_s=waited)
     (out / "cond.json").write_text(json.dumps(cond))
 
@@ -134,7 +134,7 @@ def run_one(exp, run_id, workload, load, tracer, stressor="none", seed=1,
         ["-r", str(r), "-d", str(duration), "-W", str(WARMUP), "-s", str(seed),
          "-c", worker_cpus, "-g", str(GEN_CPU), "-o", str(out / "bench.csv"),
          "-M", str(out / "meta.json"), "-R", str(ready)] +
-        (["-K", PIN] if tracer == "shm" else []),
+        (["-K", PIN] if tracer == "shm" else []) + list(extra),
         stdout=subprocess.PIPE, text=True)
     bench.stdout.readline()  # "tlbench pid=... ready" once threads exist
     tl = None
@@ -184,10 +184,33 @@ def exp_pilot():
 
 
 def exp_calibrate():
-    # separate seed range so thresholds never come from evaluation runs
+    # Separate seed range so thresholds never come from evaluation runs.
+    # Five calibration runs per condition; the threshold is the median of
+    # their p99s, because a single run can contain a platform-induced
+    # collapse episode that inflates its p99 by 10-100x.
     for wl, d in WORKLOADS.items():
         for load in d["rates"]:
             run_one("calib", f"{wl}-{load}", wl, load, PRIMARY, seed=1000)
+    plan = [(wl, load, k) for wl, d in WORKLOADS.items() for load in d["rates"] for k in range(1, 5)]
+    random.Random(17).shuffle(plan)
+    for wl, load, k in plan:
+        run_one("calib", f"{wl}-{load}-c{k}", wl, load, PRIMARY, seed=1000 + k)
+
+
+def exp_abtest():
+    """Strictly interleaved A/B: does tracing change the collapse rate?"""
+    for rep in range(8):
+        for tracer in (("none", PRIMARY) if rep % 2 == 0 else (PRIMARY, "none")):
+            run_one("abtest", f"kv-mid-{tracer}-r{rep}", "kv", "mid", tracer, seed=200 + rep)
+
+
+def exp_netrcv():
+    """Client receiver co-located with the spinning generator (CPU 3) vs on CPU 2."""
+    for rep in range(4):
+        for where in ("gen", "own"):
+            extra = ["-G", "2"] if where == "own" else []
+            run_one("netrcv", f"net-mid-rcv{where}-r{rep}", "net", "mid", PRIMARY,
+                    seed=300 + rep, extra=extra)
 
 
 def exp_main():
@@ -251,9 +274,10 @@ def main():
     record_env()
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
     steps = {"pilot": exp_pilot, "calibrate": exp_calibrate, "main": exp_main,
-             "overhead": exp_overhead, "interventions": exp_interventions}
+             "overhead": exp_overhead, "interventions": exp_interventions,
+             "abtest": exp_abtest, "netrcv": exp_netrcv}
     if what == "all":
-        for k in ("calibrate", "main", "overhead", "interventions"):
+        for k in ("calibrate", "main", "overhead", "interventions", "abtest", "netrcv"):
             steps[k]()
     else:
         steps[what]()

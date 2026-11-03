@@ -13,6 +13,7 @@ Stages (numbering follows the assignment):
   E  intervention signatures (H2): tail attribution per stressor condition
 """
 import argparse
+import gc
 import json
 import math
 from pathlib import Path
@@ -78,7 +79,7 @@ def attach_agg(df, agg, windows=(5, 20, 100), step_ms=5):
     for w in windows:
         k = max(1, w // step_ms)
         roll = agg[AGG_BASE].rolling(k, min_periods=1).sum() / (k * step_ms)
-        vals = roll.values[idx]
+        vals = roll.values.astype("float32")[idx]
         for j, c in enumerate(AGG_BASE):
             df[f"{c}@{w}"] = vals[:, j]
     return df
@@ -122,8 +123,12 @@ def load_run(d, thr_map=None):
     d = Path(d)
     cond = read_json(d / "cond.json")
     meta = read_json(d / "meta.json")
-    b = pd.read_csv(d / "bench.csv")
+    b = pd.read_csv(d / "bench.csv", engine="c")
     b = b[b["warm"] == 0].copy()
+    # counters fit comfortably in float32; timestamps stay int64
+    for c in b.columns:
+        if c.endswith("_ns") or c.startswith("n"):
+            b[c] = b[c].astype("float32")
     # Latency is measured from the moment the request was actually injected.
     # The gap between scheduled and actual injection is load-generator
     # lateness: a property of the measurement harness, reported separately.
@@ -134,6 +139,7 @@ def load_run(d, thr_map=None):
                  "noise_before": cond.get("noise_before_pct"), "noise_after": cond.get("noise_after_pct")})
     info.update({"throughput": meta["throughput"], "cpu_s": meta["cpu_s"],
                  "wall_s": meta["wall_s"], "measured": meta["measured"],
+                 "completed": meta["completed"],
                  "overflow": meta["queue_overflow"], "maxrss_kb": meta["maxrss_kb"]})
     if (d / "tlat.json").exists():
         info.update({f"tl_{k}": v for k, v in read_json(d / "tlat.json").items()})
@@ -186,14 +192,16 @@ def boot_ci(vals, f=np.median, n=2000):
 
 # ---------------------------------------------------------------- stage A
 def stage_a(raw, out, res):
-    thr = {}
-    calib = {}
+    # Tail threshold = median of the p99s of the calibration runs (5 per
+    # condition, disjoint seeds); robust to a single run with a collapse.
+    per = {}
     for d in runs(raw, "calib"):
         b, info = load_run(d)
-        key = (info["workload"], info["load"])
-        thr[key] = pct(b["lat"], 99)
-        calib[f"{key[0]}-{key[1]}"] = {"p99_ns": thr[key], "n": len(b)}
-    res["thresholds"] = calib
+        per.setdefault((info["workload"], info["load"]), []).append(pct(b["lat"], 99))
+    thr = {k: float(np.median(v)) for k, v in per.items()}
+    res["thresholds"] = {f"{k[0]}-{k[1]}": {"p99_ns": thr[k], "runs": len(v),
+                                            "calib_p99s_ns": [float(x) for x in v]}
+                         for k, v in per.items()}
 
     rows, curves = [], {}
     for d in runs(raw, "main"):
@@ -276,6 +284,10 @@ def stage_b(raw, out, res):
     df["closed"] = df["rate"] == 0
     df["collector_cpu"] = (df.get("tl_collector_user_s", 0) + df.get("tl_collector_sys_s", 0)) / df["wall_s"]
     df["bpf_cpu"] = df.get("tl_bpf_run_ns", 0) / 1e9 / df["wall_s"]
+    # noise-robust cost: tracer CPU time per served request (ns)
+    df["ns_per_req"] = ((df.get("tl_bpf_run_ns", 0) +
+                         1e9 * (df.get("tl_collector_user_s", 0) + df.get("tl_collector_sys_s", 0)))
+                        / df["completed"]).fillna(0)
     df.to_csv(out / "overhead_runs.csv", index=False)
     summ = []
     cl = df[df.closed]
@@ -289,6 +301,7 @@ def stage_b(raw, out, res):
                              loss_lo=lo, loss_hi=hi,
                              collector_cpu=float(h["collector_cpu"].median()) if tr != "none" else 0.0,
                              bpf_cpu=float(h["bpf_cpu"].median()) if tr != "none" else 0.0,
+                             ns_per_req=float(h["ns_per_req"].median()) if tr != "none" else 0.0,
                              drops=float(h.get("tl_rb_drops", pd.Series([0])).fillna(0).sum()),
                              events=float(h.get("tl_rb_submitted", pd.Series([0])).fillna(0).median()),
                              raw_mb=float(h.get("tl_raw_bytes", pd.Series([0])).fillna(0).median() / 1e6),
@@ -325,6 +338,55 @@ def stage_b(raw, out, res):
     fig.tight_layout(pad=0.3)
     fig.savefig(out / "fig_overhead.pdf")
     plt.close(fig)
+
+
+def stage_ab(raw, out, res):
+    """Interleaved A/B (kv mid): does tracing change latency or the rate of
+    collapse runs (run p99 > 10x the untraced median p99)?"""
+    rows = []
+    for d in runs(raw, "abtest"):
+        b, info = load_run(d)
+        rows.append(dict(tracer=info["tracer"], p50=pct(b.lat, 50), p99=pct(b.lat, 99),
+                         p999=pct(b.lat, 99.9), noise=info.get("noise_before")))
+    if not rows:
+        return
+    df = pd.DataFrame(rows)
+    df.to_csv(out / "abtest_runs.csv", index=False)
+    a, c = df[df.tracer == "shm"], df[df.tracer == "none"]
+    lim = 10 * c.p99.median()
+    from scipy.stats import fisher_exact
+    ca, cc = int((a.p99 > lim).sum()), int((c.p99 > lim).sum())
+    res["abtest"] = dict(
+        runs=(len(a), len(c)),
+        p50_none=float(c.p50.median()), p50_shm=float(a.p50.median()),
+        p50_p=float(mannwhitneyu(a.p50, c.p50).pvalue),
+        p99_none=float(c.p99.median()), p99_shm=float(a.p99.median()),
+        p99_p=float(mannwhitneyu(a.p99, c.p99).pvalue),
+        collapse_limit_ns=float(lim), collapses_shm=ca, collapses_none=cc,
+        collapse_fisher_p=float(fisher_exact([[ca, len(a) - ca], [cc, len(c) - cc]])[1]))
+
+
+def stage_netrcv(raw, out, res):
+    """net workload: client receiver thread sharing CPU 3 with the spinning
+    generator vs. on its own CPU. Splits latency into server-side and
+    response-path (t_done - t_end) parts."""
+    rows = []
+    for d in runs(raw, "netrcv"):
+        b, info = load_run(d)
+        resp = (b.t_done - b.t_end).values
+        rows.append(dict(where="gen" if "rcvgen" in info["run_id"] else "own",
+                         p50=pct(b.lat, 50), p99=pct(b.lat, 99), resp_p99=pct(resp, 99),
+                         server_p99=pct((b.t_end - b.t_enq).values, 99)))
+    if not rows:
+        return
+    df = pd.DataFrame(rows)
+    df.to_csv(out / "netrcv_runs.csv", index=False)
+    g = df.groupby("where").median()
+    res["netrcv"] = {w: {k: float(v) for k, v in g.loc[w].items()} for w in g.index}
+    if {"gen", "own"} <= set(df["where"]):
+        res["netrcv"]["p99_p"] = float(mannwhitneyu(df[df["where"] == "gen"].p99,
+                                                    df[df["where"] == "own"].p99,
+                                                    alternative="greater").pvalue)
 
 
 # ---------------------------------------------------------------- stage C
@@ -710,32 +772,49 @@ def stage_e(raw, thr, out, res):
     stab = df.groupby(["workload", "cond"])[[f"share_{k}" for k in CATS]].std().reset_index()
     res["attribution_stability_std"] = stab.to_dict(orient="records")
 
-    # Figure 5: which OS event types touched the tail requests, per condition
-    order = ["none", "cpuhog", "netflood", "io", "hog0-shared", "hog0-moved"]
-    labels = {"none": "none", "cpuhog": "CPU\nhog", "netflood": "softirq\nflood", "io": "I/O",
-              "hog0-shared": "hog0\nshared", "hog0-moved": "hog0\nmoved"}
-    ccol = {"sched": "#1f77b4", "irq": "#ff7f0e", "blocked": "#9467bd", "none": "#bbbbbb"}
-    wls = [w for w in ["cpu", "kv", "net"] if w in set(summ.workload)]
-    widths = [max(1, len([o for o in order if f"{w}-{o}" in set(summ.cond)])) for w in wls]
-    fig, axs = plt.subplots(1, len(wls), figsize=(7.0, 1.9), sharey=True,
-                            gridspec_kw={"width_ratios": widths}, squeeze=False)
-    axs = axs[0]
-    bw = 0.2
-    for ax, wl in zip(axs, wls):
-        sdf = summ[summ.workload == wl].set_index("cond")
-        conds = [o for o in order if f"{wl}-{o}" in sdf.index]
-        x = np.arange(len(conds))
-        for j, k in enumerate(TOUCH + ["none"]):
-            v = [sdf.loc[f"{wl}-{o}", f"touch_{k}"] for o in conds]
-            ax.bar(x + (j - 1.5) * bw, v, bw, color=ccol[k], label=k if k != "none" else "no OS event")
-        ax.set_xticks(x)
-        ax.set_xticklabels([labels[o] for o in conds], fontsize=6)
-        ax.set_title(f"{wl} workload")
-        ax.set_ylim(0, 1.05)
-        ax.grid(axis="y", alpha=0.3, lw=0.3)
-    axs[0].set_ylabel("fraction of tail\nrequests touched")
-    axs[-1].legend(frameon=False, fontsize=6, loc="upper left", bbox_to_anchor=(1.0, 1.0))
-    fig.tight_layout(pad=0.3)
+    # Figure 5: intervention signatures as log2 fold change of mean own-window
+    # delay per request vs. the matching control (H2: the predicted cell lights up)
+    cols = [("own_runq_mean", "preempt\nwait"), ("own_wake_mean", "wakeup\ndelay"),
+            ("own_irq_mean", "IRQ\ntime"), ("own_blocked_mean", "blocked")]
+    pairs = [("cpuhog", "none", "CPU hog"), ("netflood", "none", "softirq flood"),
+             ("io", "none", "I/O writer"), ("hog0-moved", "hog0-shared", "move off hog")]
+    labels, mat, ann = [], [], []
+    for wl in ["cpu", "kv", "net"]:
+        for cond, ctrl, nm in pairs:
+            a = df[(df.workload == wl) & (df.cond == f"{wl}-{cond}")]
+            c = df[(df.workload == wl) & (df.cond == f"{wl}-{ctrl}")]
+            if a.empty or c.empty:
+                continue
+            row, arow = [], []
+            for col, _ in cols:
+                va, vc = a[col].median(), c[col].median()
+                if va < 50 and vc < 50:            # both below 50 ns: no signal
+                    row.append(0.0)
+                    arow.append("·")
+                    continue
+                fc = np.log2(max(va, 1.0) / max(vc, 1.0))
+                pv = mannwhitneyu(a[col], c[col]).pvalue
+                row.append(float(np.clip(fc, -6, 6)))
+                arow.append(f"{2 ** fc:.1f}×" + ("*" if pv < 0.05 else ""))
+            labels.append(f"{wl}: {nm}")
+            mat.append(row)
+            ann.append(arow)
+    res["signature_matrix"] = {"rows": labels, "cols": [c for c, _ in cols], "log2fc": mat, "ann": ann}
+    fig, ax = plt.subplots(figsize=(3.4, 0.22 * len(labels) + 0.75))
+    im = ax.imshow(np.array(mat), cmap="RdBu_r", vmin=-6, vmax=6, aspect="auto")
+    for i, arow in enumerate(ann):
+        for j, t in enumerate(arow):
+            ax.text(j, i, t, ha="center", va="center", fontsize=5.5,
+                    color="white" if abs(mat[i][j]) > 4 else "black")
+    ax.set_xticks(range(len(cols)))
+    ax.set_xticklabels([n for _, n in cols], fontsize=6)
+    ax.set_yticks(range(len(labels)))
+    ax.set_yticklabels(labels, fontsize=6)
+    ax.tick_params(length=0)
+    cb = fig.colorbar(im, ax=ax, fraction=0.05, pad=0.02)
+    cb.set_label("log$_2$ fold change", fontsize=6)
+    cb.ax.tick_params(labelsize=5)
+    fig.tight_layout(pad=0.2)
     fig.savefig(out / "fig_signature.pdf")
     plt.close(fig)
 
@@ -805,6 +884,8 @@ def main():
     res = {}
     thr = stage_a(a.raw, out, res)
     stage_b(a.raw, out, res)
+    stage_ab(a.raw, out, res)
+    stage_netrcv(a.raw, out, res)
 
     frames, val, ew = [], [], []
     for exp in ("main", "interv"):
@@ -830,6 +911,7 @@ def main():
                                                 "is_tail", "rep", "noise")]
             b[num] = b[num].astype("float32")
             frames.append(b)
+            gc.collect()
     V = pd.DataFrame(val)
     V.to_csv(out / "validation.csv", index=False)
     res["validation"] = {"runs": len(V), "coverage_min": float(V.coverage.min()),
