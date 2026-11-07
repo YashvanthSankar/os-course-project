@@ -26,3 +26,10 @@ Quick start (Ubuntu 24.04, inside the VM):
 bash scripts/setup_vm.sh && make
 sudo bash scripts/run_all.sh
 ```
+
+## Data
+
+- **Sample run** (in the repo): [data/sample/](data/sample/) — one complete raw run, gzip-compressed.
+- **Full raw data** (~16 GB, 318 runs): **TODO — upload `data/raw` to Drive/Zenodo and put the link here.**
+- **Processed results** (every table and figure in the report): [results/](results/)
+- **Data dictionary:** [docs/REPRODUCE.md](docs/REPRODUCE.md) §6

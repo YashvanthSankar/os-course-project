@@ -1,0 +1,1 @@
+{"exp": "main", "run_id": "cpu-low-shm-r0", "workload": "cpu", "load": "low", "rate": 7000, "tracer": "shm", "stressor": "none", "seed": 1, "worker_cpus": "0-2", "duration": 15.0, "warmup": 2, "started": 1793686912.8528113, "noise_before_pct": 0.484, "noise_wait_s": 0, "noise_after_pct": 0.268}

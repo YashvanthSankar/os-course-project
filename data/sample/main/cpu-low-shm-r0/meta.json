@@ -1,0 +1,1 @@
+{"mode":"cpu","workers":3,"rate":7000.0,"duration":15.00,"warmup":2.00,"seed":1,"work_us":100.00,"worker_cpus":"0-2","gen_cpu":3,"sync_every":200,"lookups":8,"iters_per_us":373.091,"t_origin":7553505274322,"wall_s":17.0012,"completed":118671,"measured":104458,"lost":0,"queue_overflow":0,"throughput":6980.17,"cpu_s":29.3990,"maxrss_kb":19200,"nvcsw":120416,"nivcsw":3474}
