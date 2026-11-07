@@ -8,7 +8,7 @@ Status updated 2026-11-07. Open items are marked **[ ]**.
 - [x] **Where is the raw data?** In the Linux VM at `~/work/project/data/raw` (19 GB, 318 runs). Compressed archive: see §2.
 
 ## 2. Raw data
-- [ ] **Upload the archive and put the link in README.md and `data/sample/README.md`** (needs your Drive/Zenodo account). The archive is `tailtag_raw_data.tar.zst`; see the final message for its location and SHA-256.
+- [ ] **Upload the archive and put the link in README.md and `data/sample/README.md`** (needs your Drive/Zenodo account). The archive is `~/Study/OS/tailtag_raw_data.tar.zst` on Yashvanth's Mac (4.2 GB, all 318 runs, integrity checked), SHA-256 `a9bc7508e738b23361dcad6a8695022478e2869d33a5e7195ae597f6a18c0044`.
 - [x] One small sample run committed: [data/sample/](data/sample/) (`main/cpu-low-shm-r0`, 3.7 MB, gzip).
 - [x] Data dictionary already exists in [docs/REPRODUCE.md](docs/REPRODUCE.md) §6.
 
