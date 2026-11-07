@@ -49,8 +49,8 @@ identity that holds within 5\,$\mu$s for at least \valWithin\% of requests
 in every run.
 \item An evaluation over three workloads, three loads and five repetitions.
 It compares aligned per-request features against aggregate event counts and
-a queueing-only control, including a workload held out from training (H1),
-and validates the attribution with one-at-a-time interventions (H2).
+a queueing-only control on held-out workloads and fresh runs (H1), and
+validates the attribution with one-at-a-time interventions (H2).
 \item Two practical outcomes: a noise gate that exposes hypervisor
 interference in VM-based latency studies, and an upstream patch to bcc's
 \texttt{runqlat} that separates wakeup latency from preemption latency.

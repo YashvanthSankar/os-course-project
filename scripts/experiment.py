@@ -296,7 +296,8 @@ def main():
              "abtest": exp_abtest, "netrcv": exp_netrcv,
              "fixval": exp_fixval, "netfresh": exp_netfresh}
     if what == "all":
-        for k in ("calibrate", "main", "overhead", "interventions", "abtest", "netrcv"):
+        for k in ("calibrate", "main", "overhead", "interventions", "abtest", "netrcv",
+                  "fixval", "netfresh"):
             steps[k]()
     else:
         steps[what]()

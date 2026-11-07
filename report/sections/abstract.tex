@@ -7,11 +7,12 @@ at request boundaries with plain memory loads, with no trap or ring-buffer
 record per request. \sys{} costs \ovNsKvShm--\ovNsCpuShm{}\,ns of tracer
 CPU per request, 47--53$\times$ less than uprobe-based windows, and closes
 an accounting identity within 5\,$\mu$s for at least \valWithin\% of
-requests. Across 291 runs of three workloads, a queue-length control
-explains most tails in the training workloads, and there aligned kernel
-features do no better than aggregate counts. On a held-out workload,
-however, aligned features keep PR-AUC \apAlLHeld{} where aggregate counts
-fall to \apAgLHeld. Most of the signal is OS delay \emph{inherited} from
+requests. Across 318 runs of three workloads, a queue-length control
+explains most tails, and aligned kernel features detect them no better than
+aggregate counts. Their advantage on one held-out workload (PR-AUC
+\apAlLHeld{} vs.\ \apAgLHeld) did not survive rotating the held-out
+workload or a fresh replication: they only see tails caused inside the
+request window. Most of their signal is OS delay \emph{inherited} from
 requests queued ahead. One-at-a-time interventions confirm 7 of 9
 pre-stated signatures, and the two misses expose an interrupt path we had
 not predicted. We also show how hypervisor noise distorts VM-based tail

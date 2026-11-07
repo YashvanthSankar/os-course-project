@@ -1,48 +1,41 @@
 # TODO: review fixes before submission
 
 Collected from two external reviews and checked against the repo (2026-11-06).
+Status updated 2026-11-07. Open items are marked **[ ]**.
 
-## 1. Ask Yashvanth (today)
-- [ ] **When was inherited delay finalised?** LEARN.md says the first version "leaked queue length" and was then fixed (10 µs floor + queue-length control). Were net (held-out) results looked at during that fix? Git can't answer this, because the whole analysis came in one commit (`3b528da`).
-  - If net was **not** looked at: say so in the method section.
-  - If it **was**: say so honestly in threats to validity, and ideally re-test on fresh net runs.
-- [ ] **Where is the raw data?** `data/raw/` (~16 GB, 291 runs) is not in the repo.
+## 1. Ask Yashvanth
+- [x] **When was inherited delay finalised? Was net looked at?** Yes. The 10 µs floor and the queue-length control were designed on early *smoke-test* data (short, noisy runs) that included net, before the final campaign, so net was not fully unseen. Now stated in threats to validity. Re-tested on **9 fresh net runs** with unused seeds (`netfresh`): aligned PR-AUC **0.04** vs aggregate **0.10** (base rate 0.011). H1 did not hold there, and the report now says so (see §6).
+- [x] **Where is the raw data?** In the Linux VM at `~/work/project/data/raw` (19 GB, 318 runs). Compressed archive: see §2.
 
 ## 2. Raw data
-- [ ] Upload `data/raw/` (Drive / Zenodo) and link it from README.md. Optionally commit one small sample run.
-- Data dictionary already exists in [docs/REPRODUCE.md](docs/REPRODUCE.md) §6. No new schema needed.
+- [ ] **Upload the archive and put the link in README.md and `data/sample/README.md`** (needs your Drive/Zenodo account). The archive is `tailtag_raw_data.tar.zst`; see the final message for its location and SHA-256.
+- [x] One small sample run committed: [data/sample/](data/sample/) (`main/cpu-low-shm-r0`, 3.7 MB, gzip).
+- [x] Data dictionary already exists in [docs/REPRODUCE.md](docs/REPRODUCE.md) §6.
 
-## 3. Report fixes (no raw data needed)
-- [ ] **Queueing control = diagnosis, not prediction.** `qlen_proxy` counts completions *during* the wait, so it is only known after the fact. Reword in results §H1.
-- [ ] **Add base rates to the detection table**, separately per split:
-  - cpu/kv test: **20.4%** (random PR-AUC ≈ 0.20)
-  - held-out net: **4.9%** (random PR-AUC ≈ 0.05)
-- [ ] **H1 line for net:** "On net (base rate 4.9%), aligned features reach about 2× the PR-AUC of aggregate counts (0.42–0.53 vs 0.18–0.26)."
-  - Do NOT write "aggregates ≈ random". At 4–5× the base rate they still carry signal.
-- [ ] **Cite two close prior works** in related work:
-  - Rezvani, Jahanshahi, Wong, "Characterizing In-Kernel Observability of Latency-Sensitive Request-level Metrics with eBPF", ISPASS 2024. Contrast: they *reconstruct* request metrics from syscalls; we *explain* them with scheduler/IRQ time.
-  - "SchedBlame: Who Ran While You Waited? Culprit-Attributed CPU Contention for Containers on Stock Kernels", arXiv 2609.02052. Label it as an **arXiv preprint**. Contrast: culprit container vs per-request attribution.
-- [ ] **Noise gate:** the gate *waits* rather than rejecting, so "runs rejected" is always 0. Instead, summarise `noise_wait_s` from the `*_runs.csv` files (how many runs waited, median and max wait).
+## 3. Report fixes
+- [x] **Queueing control = diagnosis, not prediction**: reworded in results §H1.
+- [x] **Base rates in the detection table**: caption now gives test 0.20, net 0.05; text gives 20.4% / 4.9%.
+- [x] **H1 line for net**: "about twice the PR-AUC of aggregate counts", and "the aggregates still carry signal, at 4–5× the base rate".
+- [x] **Cited two close prior works** (both verified: Crossref DOI 10.1109/ISPASS61541.2024.00013; arXiv 2609.02052, labelled as a preprint): Rezvani et al. ISPASS 2024 (reconstruct vs. explain) and SchedBlame (culprit containers vs. per-request).
+- [x] **Noise gate**: results now say the gate waits rather than rejects; 35 of 318 runs waited (median 15 s, longest 20 min).
 
 ## 4. Code fix
-- [ ] **Torn read in `ksnap_take`** ([src/tlbench.c](src/tlbench.c)): `oncpu_ts` and `oncpu_ns` are read as two separate loads. A preemption between them double-counts off-CPU time. Fix: read `oncpu_ts`, read the counters, re-read `oncpu_ts`, retry if it changed.
-  - Then either re-run, or list it as a known limitation (rare; may explain part of the 2.2% outside 5 µs).
+- [x] **Torn read in `ksnap_take`** fixed with a retry when `oncpu_ts` changes (seqlock-style); retries are counted in `meta.json` (`ksnap_retries`, median 1 per run). 18 validation runs (`fixval`): identity on switched requests worst run **90.9% → 98.0%**. The campaign used the old binary; this is stated in the report.
 
-## 5. Analysis fixes (need `data/raw`)
-- [ ] **Identity check on the meaningful subset.** For a request that never left the CPU, on-CPU = time between snapshots, so the identity holds by construction. Report the within-5 µs % for requests with **≥1 context switch** separately.
-- [ ] **"No OS signal" sensitivity:** recompute the 57% with 5 / 10 / 20 µs floors (`SIG_FLOOR_NS` in `analyze.py`).
-- [ ] **Absolute values for intervention ratios** (94–285× etc.): add µs before → after. First check whether `results/interventions_summary.csv` already has them.
+## 5. Analysis fixes
+- [x] **Identity on the meaningful subset**: only 0.44% of requests switched inside their window; for those, the median run holds 99.97%, worst 90.9% (98.0% after the fix). In the report.
+- [x] **"No OS signal" sensitivity**: 50% / 55% / 58% of tails at 5 / 10 / 20 µs floors. In the report.
+- [x] **Absolute values for intervention ratios**: added in µs (e.g. preemption wait 0.02 → 4.64 µs for the 285× case; the ratios are large because the baseline is tens of ns).
 
 ## 6. If time allows
-- [ ] **Rotate the held-out workload:** train on 2, test on the 3rd, all three ways, with CIs. Currently `net` is hard-coded as held-out (`analyze.py:511`).
-- [ ] **Extend the open-loop A/B latency test** beyond kv-mid to other workloads/loads.
-- [ ] One bare-metal run to bound VM steal time.
+- [x] **Rotated the held-out workload** (`analysis/review_checks.py`). Held-out cpu: forest aligned 0.58 vs aggregate 0.33, but logistic 0.43 vs 0.56. Held-out kv: 0.61 vs 0.57, logistic 0.50 vs 0.63. Held-out net: 0.42/0.50 vs 0.25/0.26. **The net advantage does not generalize.** The report now says H1 is not supported as a general claim, and explains why (fresh-net tails are 69–99% client-side, outside the request window).
+- [ ] **Extend the open-loop A/B latency test** beyond kv-mid. Not done (needs a quiet host for about 30 min).
+- [ ] **One bare-metal run** to bound VM steal time. Not possible on this setup; listed as future work.
 
 ## Already done (no action)
 - Overhead table (5 modes; ns/req includes BPF run time) and kv-mid A/B test.
-- H1 wording ("holds for generalization only").
 - "We found no…" gap wording.
 - Interrupt time "charged to the interrupted thread".
 - Slot collisions counted (0 in all runs); TID reuse harmless since only deltas are used.
-- References: already 8 peer-reviewed, including ghOSt and Wasted Cores.
-- "No signal" threshold is stated (10 µs).
+- References: 14 in total: 9 papers (8 peer-reviewed conference papers + 1 CACM article), 1 arXiv preprint, 1 conference talk, 3 docs/software/blog. All verified.
+- "No signal" threshold stated (10 µs), now with 5/20 µs sensitivity.

@@ -291,7 +291,7 @@ def main():
             if k in Z:
                 M(f"id{kk}AllMin", f"{100 * Z[k]['within_all_min']:.1f}")
                 M(f"id{kk}SwMin", f"{100 * Z[k]['within_switched_min']:.1f}")
-                M(f"id{kk}SwMed", f"{100 * Z[k]['within_switched_median']:.1f}")
+                M(f"id{kk}SwMed", f"{100 * Z[k]['within_switched_median']:.2f}")
                 M(f"id{kk}SwShare", f"{100 * Z[k]['switched_share']:.1f}")
                 M(f"id{kk}Runs", Z[k]["runs"])
         for f, v in Z.get("no_signal", {}).items():
@@ -321,6 +321,7 @@ def main():
         v = d.get("aligned|forest|netfresh")
         if v:
             M("freshBase", f"{v['base_rate']:.2f}"); M("freshRuns", v["runs"])
+            M("freshBasePct", f"{100 * v['base_rate']:.1f}")
     ns = res_dir / "no_signal.json"
     if ns.exists():
         z = json.loads(ns.read_text())

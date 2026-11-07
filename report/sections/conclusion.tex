@@ -6,9 +6,10 @@ programs and read through a shared BPF map costs about as much as plain
 event counters, and its accounting closes. The evaluation gives a more
 nuanced answer than our hypothesis. Within a known workload, queueing
 explains most tail requests, and any signal that tracks load (including
-aggregate counts) detects them. The value of request-aligned kernel
-telemetry shows up in two places: it generalizes to a workload not seen
-during training, and it names the cause. Controlled interventions moved
+aggregate counts) detects them. Request-aligned kernel telemetry did
+better on one held-out workload, but not when the held-out workload was
+rotated or the runs repeated with fresh seeds, so its value lies in naming
+the cause, not in detection. Controlled interventions moved
 exactly the predicted delay component in seven of nine cases. The
 remaining cases, together with the client-side receiver delay of the net
 workload, show where the method stops: OS delay on threads outside the
