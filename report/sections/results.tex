@@ -66,15 +66,18 @@ them. This is the precision cliff near 0.45 recall in Fig.~\ref{fig:pr}.
 \textbf{(1) Queueing dominates detection on the training workloads.} The
 queue-length control alone reaches PR-AUC \apQLTest{}, more than any
 kernel feature set. Once a request is queued behind others, its fate is
-largely decided. \textbf{(2) On those workloads, aligned telemetry
+largely decided. The control counts requests that completed \emph{during}
+the wait, so it is only known afterwards: it is a diagnostic reference for
+how much of the tail is queueing, not a predictor. \textbf{(2) On those workloads, aligned telemetry
 is not better than aggregate counts}: \apAlFTest{} vs.\ \apAgFTest{} for
 the forest (\apAlLTest{} vs.\ \apAgLTest{} logistic), and 5\,ms aggregates
 reach \ablAggFiveTest{} (Fig.~\ref{fig:ablation}). In-distribution, H1 is
-not supported. \textbf{(3) Aligned telemetry generalizes and aggregates do
-not.} On the never-seen net workload, aligned features keep PR-AUC
-\apAlFHeld{} (forest), \apAlLHeld{} (logistic) and \apRuleHeld{} (rule),
-while aggregate counts fall to \apAgFHeld, \apAgLHeld{} and
-\apAggRuleHeld. The interpretable rule
+not supported. \textbf{(3) Aligned telemetry generalizes better.} On the never-seen net
+workload (base rate \baseHeld\%), aligned features reach about twice the
+PR-AUC of aggregate counts: \apAlFHeld{} (forest), \apAlLHeld{} (logistic)
+and \apRuleHeld{} (rule), against \apAgFHeld, \apAgLHeld{} and
+\apAggRuleHeld. The aggregates still carry signal, at 4--5$\times$ the
+base rate, but transfer worse. The interpretable rule
 (``total OS delay above \ruleTau$\times$ the tail threshold'') transfers
 as well as the learned models. On top of the queue control, aligned
 features also add more on net than aggregates do (logistic \apQAlLHeld{}
@@ -130,20 +133,25 @@ Fig.~\ref{fig:signature} gives each intervention's effect on each delay
 type. \textbf{Seven of nine predictions hold} (one-sided Mann--Whitney,
 5 vs.\ 5 runs, $p\le0.048$):
 \begin{itemize}
-\item The CPU hog raises preemption wait \sigCpuHogRunq$\times$ (cpu),
-\sigKvHogRunq$\times$ (kv) and \sigNetHogRunq$\times$ (net), and wakeup
-delay 15--46$\times$. IRQ time and blocking do not change.
+\item The CPU hog raises mean preemption wait per request
+\sigCpuHogRunq$\times$ (cpu, \absCpuHogRunqCtl$\to$\absCpuHogRunqInt\,$\mu$s),
+\sigKvHogRunq$\times$ (kv, \absKvHogRunqCtl$\to$\absKvHogRunqInt\,$\mu$s) and
+\sigNetHogRunq$\times$ (net, \absNetHogRunqCtl$\to$\absNetHogRunqInt\,$\mu$s),
+and wakeup delay 15--46$\times$ (e.g.\ cpu \absCpuHogWakeCtl$\to$\absCpuHogWakeInt\,$\mu$s).
+The ratios are large because the baseline is tens of nanoseconds. IRQ time
+and blocking do not change.
 \item Moving the workers off the hog cuts preemption wait to
-\sigCpuMoveRunq$\times$ (cpu) and \sigKvMoveRunq$\times$ (kv). This is the
+\sigCpuMoveRunq$\times$ (cpu, \absCpuMoveRunqCtl$\to$\absCpuMoveRunqInt\,$\mu$s) and
+\sigKvMoveRunq$\times$ (kv, \absKvMoveRunqCtl$\to$\absKvMoveRunqInt\,$\mu$s). This is the
 reverse effect.
-\item The I/O writer raises kv blocking \sigKvIoBlk$\times$ (and IRQ time
-\sigKvIoIrq$\times$).
+\item The I/O writer raises kv blocking \sigKvIoBlk$\times$
+(\absKvIoBlkCtl$\to$\absKvIoBlkInt\,$\mu$s) and IRQ time \sigKvIoIrq$\times$.
 \end{itemize}
 The two misses are informative. The softirq flood had no significant
 effect on kv (\sigKvFloodIrq$\times$ IRQ time): kv workers are often
 asleep, so steered softirqs mostly land on idle CPUs. For the cpu workload,
 which never blocks, the I/O writer showed up as \sigCpuIoIrq$\times$
-\emph{interrupt} time instead, because block-completion IRQs land on the
+\emph{interrupt} time instead (\absCpuIoIrqCtl$\to$\absCpuIoIrqInt\,$\mu$s), because block-completion IRQs land on the
 worker CPUs. That is a cause our prediction (blocked) did not anticipate,
 and one that only per-thread IRQ charging can reveal.
 

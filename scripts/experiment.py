@@ -204,6 +204,24 @@ def exp_abtest():
             run_one("abtest", f"kv-mid-{tracer}-r{rep}", "kv", "mid", tracer, seed=200 + rep)
 
 
+def exp_fixval():
+    """Validation re-run after the torn-read fix in ksnap_take (TODO 4):
+    same conditions as the main/intervention runs, new seeds."""
+    plan = [(wl, st, rep) for wl in ("cpu", "kv", "net") for st in ("none", "cpuhog") for rep in range(3)]
+    random.Random(19).shuffle(plan)
+    for wl, st, rep in plan:
+        run_one("fixval", f"{wl}-{st}-r{rep}", wl, "mid", PRIMARY, stressor=st, seed=700 + rep)
+
+
+def exp_netfresh():
+    """Fresh held-out net runs (seeds never used before) for a test set that
+    was not seen while the features were designed (TODO 1)."""
+    plan = [(load, rep) for load in WORKLOADS["net"]["rates"] for rep in range(3)]
+    random.Random(23).shuffle(plan)
+    for load, rep in plan:
+        run_one("netfresh", f"net-{load}-shm-r{rep}", "net", load, PRIMARY, seed=500 + rep)
+
+
 def exp_netrcv():
     """Client receiver co-located with the spinning generator (CPU 3) vs on CPU 2."""
     for rep in range(4):
@@ -275,7 +293,8 @@ def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
     steps = {"pilot": exp_pilot, "calibrate": exp_calibrate, "main": exp_main,
              "overhead": exp_overhead, "interventions": exp_interventions,
-             "abtest": exp_abtest, "netrcv": exp_netrcv}
+             "abtest": exp_abtest, "netrcv": exp_netrcv,
+             "fixval": exp_fixval, "netfresh": exp_netfresh}
     if what == "all":
         for k in ("calibrate", "main", "overhead", "interventions", "abtest", "netrcv"):
             steps[k]()

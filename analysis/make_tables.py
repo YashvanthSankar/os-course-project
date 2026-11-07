@@ -138,7 +138,8 @@ def main():
     (out / "tab_detect.tex").write_text(
         "\\begin{table}[t]\\centering\\caption{Tail-request detection, PR-AUC [run-bootstrap 95\\% CI]. "
         "Train: cpu/kv reps 0--2; test: reps 3--4; net never seen. LR logistic regression, RF random "
-        "forest; rules: total OS delay $>\\tau$ (aligned), PSI CPU $>\\tau$ (aggregate).}"
+        "forest; rules: total OS delay $>\\tau$ (aligned), PSI CPU $>\\tau$ (aggregate). Base rate "
+        "(= PR-AUC of a random ranking): test \\baseApTest, net \\baseApHeld.}"
         "\\label{tab:detect}\\scriptsize\\setlength{\\tabcolsep}{2.5pt}\n"
         "\\begin{tabular}{llrr}\\toprule\n"
         "features & model & test (cpu/kv) & held-out (net)\\\\\\midrule\n" +
@@ -257,6 +258,69 @@ def main():
             sk = "Test" if r["set"].startswith("test") else "Held"
             if r.ablation in kk:
                 M(f"abl{kk[r.ablation]}{sk}", f"{r.ap:.2f}")
+    # base rates per evaluation split (random classifier PR-AUC)
+    for sname, sk in zip(sets, ("Test", "Held")):
+        h = det[det.set == sname]
+        if not h.empty:
+            M(f"base{sk}", f"{100 * h.iloc[0].base_rate:.1f}")
+            M(f"baseAp{sk}", f"{h.iloc[0].base_rate:.2f}")
+    # absolute values behind the intervention fold changes (median of per-run means, us)
+    iv = res_dir / "interventions_summary.csv"
+    if iv.exists():
+        S = pd.read_csv(iv).set_index("cond")
+        def us_(v):
+            v = v / 1e3
+            return f"{v:.2f}" if v < 10 else f"{v:.1f}"
+        pairs = {"Hog": ("cpuhog", "none"), "Io": ("io", "none"), "Move": ("hog0-moved", "hog0-shared"),
+                 "Flood": ("netflood", "none")}
+        cols = {"Runq": "own_runq_mean", "Wake": "own_wake_mean", "Irq": "own_irq_mean", "Blk": "own_blocked_mean"}
+        for wl in ("cpu", "kv", "net"):
+            for pk, (ci, cc) in pairs.items():
+                if f"{wl}-{ci}" in S.index and f"{wl}-{cc}" in S.index:
+                    for ck, col in cols.items():
+                        M(f"abs{wl.capitalize()}{pk}{ck}Ctl", us_(S.loc[f"{wl}-{cc}", col]))
+                        M(f"abs{wl.capitalize()}{pk}{ck}Int", us_(S.loc[f"{wl}-{ci}", col]))
+    rc = res_dir / "review_checks.json"
+    if rc.exists():
+        Z = json.loads(rc.read_text())
+        nw = Z.get("noise_wait", {})
+        if nw:
+            M("nwRuns", nw["runs"]); M("nwWaited", nw["waited"])
+            M("nwMed", f"{nw['median_wait_s_of_waiting']:.0f}"); M("nwMax", f"{nw['max_wait_s'] / 60:.0f}")
+        for k, kk in (("identity_campaign", "Camp"), ("identity_fixed", "Fix")):
+            if k in Z:
+                M(f"id{kk}AllMin", f"{100 * Z[k]['within_all_min']:.1f}")
+                M(f"id{kk}SwMin", f"{100 * Z[k]['within_switched_min']:.1f}")
+                M(f"id{kk}SwMed", f"{100 * Z[k]['within_switched_median']:.1f}")
+                M(f"id{kk}SwShare", f"{100 * Z[k]['switched_share']:.1f}")
+                M(f"id{kk}Runs", Z[k]["runs"])
+        for f, v in Z.get("no_signal", {}).items():
+            M(f"noSigFloor{ {'5us': 'Five', '10us': 'Ten', '20us': 'Twenty'}[f] }", f"{100 * v:.0f}")
+        def g(d, key):
+            return d.get(key, {}).get("ap")
+        for held, hk in (("cpu", "Cpu"), ("kv", "Kv"), ("net", "Net")):
+            d = Z.get("rotation", {}).get(held, {})
+            for fs, fk in (("aligned", "Al"), ("aggregate@20ms", "Ag"), ("queue proxy", "Q")):
+                for mdl, mk in (("forest", "F"), ("logreg", "L")):
+                    v = d.get(f"{fs}|{mdl}|held")
+                    if v:
+                        M(f"rot{hk}{fk}{mk}", f"{v['ap']:.2f}")
+                        M(f"rot{hk}{fk}{mk}Lo", f"{v['lo']:.2f}")
+                        M(f"rot{hk}{fk}{mk}Hi", f"{v['hi']:.2f}")
+            v = d.get("aligned|forest|held")
+            if v:
+                M(f"rot{hk}Base", f"{v['base_rate']:.2f}")
+        d = Z.get("netfresh", {})
+        for fs, fk in (("aligned", "Al"), ("aggregate@20ms", "Ag"), ("queue proxy", "Q")):
+            for mdl, mk in (("forest", "F"), ("logreg", "L")):
+                v = d.get(f"{fs}|{mdl}|netfresh")
+                if v:
+                    M(f"fresh{fk}{mk}", f"{v['ap']:.2f}")
+                    M(f"fresh{fk}{mk}Lo", f"{v['lo']:.2f}")
+                    M(f"fresh{fk}{mk}Hi", f"{v['hi']:.2f}")
+        v = d.get("aligned|forest|netfresh")
+        if v:
+            M("freshBase", f"{v['base_rate']:.2f}"); M("freshRuns", v["runs"])
     ns = res_dir / "no_signal.json"
     if ns.exists():
         z = json.loads(ns.read_text())

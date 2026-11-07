@@ -164,22 +164,41 @@ static inline volatile struct tstate *my_slot(pid_t tid)
 	return slots ? &slots[tid & (NSLOTS - 1)] : NULL;
 }
 
+static unsigned long ksnap_retries;    /* torn snapshots detected and retried */
+
+/*
+ * Snapshot the thread's kernel counters. oncpu_ts/oncpu_ns change together
+ * at every context switch, so a preemption between reading them would
+ * double-count the off-CPU gap. oncpu_ts is re-read after the counters and
+ * the snapshot is retried if it changed (a seqlock with oncpu_ts as the
+ * sequence; every switch-in writes a new timestamp).
+ */
 static inline void ksnap_take(struct ksnap *k, volatile struct tstate *s)
 {
-	/* the thread is running, so its current on-CPU segment started at
-	 * oncpu_ts (same clock as bpf_ktime_get_ns) */
-	uint64_t ts = s->oncpu_ts, acc = s->oncpu_ns;
-	k->oncpu = acc + (ts ? now_ns() - ts : 0);
-	k->runq = s->runq_ns;
-	k->wake = s->wake_ns;
-	k->blocked = s->blocked_ns;
-	k->soft = s->softirq_ns;
-	k->hard = s->hardirq_ns;
-	k->nvcsw = s->nvcsw;
-	k->nivcsw = s->nivcsw;
-	k->nmigr = s->nmigr;
-	k->nsoft = s->nsoftirq;
-	k->nhard = s->nhardirq;
+	for (int tries = 0; tries < 8; tries++) {
+		uint64_t ts1 = s->oncpu_ts;
+		__atomic_thread_fence(__ATOMIC_ACQUIRE);
+		uint64_t acc = s->oncpu_ns;
+		k->runq = s->runq_ns;
+		k->wake = s->wake_ns;
+		k->blocked = s->blocked_ns;
+		k->soft = s->softirq_ns;
+		k->hard = s->hardirq_ns;
+		k->nvcsw = s->nvcsw;
+		k->nivcsw = s->nivcsw;
+		k->nmigr = s->nmigr;
+		k->nsoft = s->nsoftirq;
+		k->nhard = s->nhardirq;
+		uint64_t now = now_ns();
+		__atomic_thread_fence(__ATOMIC_ACQUIRE);
+		uint64_t ts2 = s->oncpu_ts;
+		/* the thread is running, so its current on-CPU segment started at
+		 * oncpu_ts (same clock as bpf_ktime_get_ns) */
+		k->oncpu = acc + (ts1 ? now - ts1 : 0);
+		if (ts1 == ts2)
+			return;
+		__atomic_fetch_add(&ksnap_retries, 1, __ATOMIC_RELAXED);
+	}
 }
 
 /* begin/end of a request window as seen through the shared counters */
@@ -827,7 +846,7 @@ int main(int argc, char **argv)
 		"\"iters_per_us\":%.3f,\"t_origin\":%llu,\"wall_s\":%.4f,"
 		"\"completed\":%llu,\"measured\":%llu,\"lost\":%llu,\"queue_overflow\":%llu,"
 		"\"throughput\":%.2f,\"cpu_s\":%.4f,\"maxrss_kb\":%ld,"
-		"\"nvcsw\":%ld,\"nivcsw\":%ld}\n",
+		"\"nvcsw\":%ld,\"nivcsw\":%ld,\"ksnap_retries\":%lu}\n",
 		mname[C.mode], C.workers, C.rate, C.duration, C.warmup,
 		(unsigned long long)C.seed, C.work_us, C.worker_cpus, C.gen_cpu,
 		C.sync_every, C.lookups, iters_per_us_x1000 / 1000.0,
@@ -835,7 +854,7 @@ int main(int argc, char **argv)
 		(unsigned long long)n_done, (unsigned long long)n_meas,
 		(unsigned long long)n_lost, (unsigned long long)q_overflow,
 		n_done / wall, cpu_s, ru1.ru_maxrss,
-		ru1.ru_nvcsw - ru0.ru_nvcsw, ru1.ru_nivcsw - ru0.ru_nivcsw);
+		ru1.ru_nvcsw - ru0.ru_nvcsw, ru1.ru_nivcsw - ru0.ru_nivcsw, ksnap_retries);
 	if (m != stdout)
 		fclose(m);
 	return 0;

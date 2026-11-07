@@ -31,10 +31,15 @@ offers verified programs on stable tracepoints, maps and ring buffers. The
 bcc tools~\cite{bcc} build on it: \texttt{runqlat} reports runqueue latency
 as a histogram per CPU, process or cgroup, and similar tools cover softirq
 and off-CPU time. Netflix uses runqueue latency per container in production
-to detect noisy neighbours~\cite{netflix2024noisy}. All of these aggregate
-over time or over a task, so their output cannot be joined with the latency
-of one request, and \texttt{runqlat} merges wakeup and preemption waits
-into one histogram. Recording every scheduler event instead, as
+to detect noisy neighbours~\cite{netflix2024noisy}, and the SchedBlame
+preprint~\cite{li2026schedblame} names the cgroups that ran while a
+container waited. All of these aggregate over time, a task or a container,
+so their output cannot be joined with the latency of one request, and
+\texttt{runqlat} merges wakeup and preemption waits into one histogram.
+Rezvani et al.~\cite{rezvani2024ispass} showed that eBPF syscall tracing
+can \emph{reconstruct} request-level metrics such as throughput and tail
+latency; we instead \emph{explain} slow requests by the scheduler and IRQ
+time behind them. Recording every scheduler event instead, as
 \texttt{perf sched} or ftrace do, is complete but expensive: our own
 per-event streaming mode costs 63--104$\times$ more tracer CPU per request
 than in-kernel accounting (\S\ref{sec:overhead}).
