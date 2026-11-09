@@ -32,6 +32,30 @@ Status updated 2026-11-07. Open items are marked **[ ]**.
 - [ ] **Extend the open-loop A/B latency test** beyond kv-mid. Not done (needs a quiet host for about 30 min).
 - [ ] **One bare-metal run** to bound VM steal time. Not possible on this setup; listed as future work.
 
+## 7. Third review (2026-11-08), on main @ a799313
+Open items, most important first.
+
+### Fix before submission
+- [ ] **`sched_switch` ignores the `preempt` flag** ([src/tlat.bpf.c:171](src/tlat.bpf.c#L171)). `involuntary = prev_state == 0` misses a thread preempted after it set `TASK_INTERRUPTIBLE` but before `schedule()` (futex / condvar / `epoll_wait` paths). Its off-CPU time goes to blocked/wake, or is lost and breaks the identity. Fix: `int involuntary = preempt || prev_state == 0;`. Check the 6.8 `__schedule()` source first, then rerun the 18 `fixval` runs. If no rerun is possible, add a sentence to threats to validity.
+- [ ] **H2 count after multiple-testing correction** (results §H2). 9 one-sided 5-vs-5 tests; the minimum attainable p is 1/252 ≈ 0.004. Holm keeps 5 of 9 (cpu hog, cpu move, kv hog, kv I/O, net hog); cpu flood and kv move are at p = 0.048. Write "7 of 9 at p < 0.05 uncorrected; 5 of 9 after Holm". Also say that cpu flood is only 0.16 µs/request in absolute terms.
+- [ ] **Abstract overclaims the bcc patch.** It says "contribute a `runqlat` patch to bcc", but `opensource/PR_DESCRIPTION.md` says "not yet built or submitted". Change it to "prepare", or build, test and open the PR, then link it. The patch keeps upstream's `get_task_state(prev) == TASK_RUNNING`, so it has the same preemption blind spot.
+- [ ] **Raw data size mismatch.** README says ~16 GB, §1 above says 19 GB. Fix it together with the upload link (§2).
+
+### Wording / statistics
+- [ ] **5% overhead claim** (results §Overhead). The A/B test (n = 8, p99 335 vs 146 µs, p = 0.33) has no power to show a 5% effect. Lead with the per-request cost instead: 120–220 ns against 20–100 µs of service is 0.2–1%. Say "no effect detected at n = 8" and drop "therefore met".
+- [ ] **H2 "and only that component" is never tested.** For kv I/O, IRQ time rose 23× while blocked time rose 5.7×. Either drop "and only that one" from H2 in the intro, or report the off-target ratios (already in `results.json → h2_tests[].other_ratios`).
+- [ ] **All H1 features are post-hoc, not only the queue control.** Inherited delay uses the same wait window, and own-window features finish at request end. Add one sentence: "H1 tests diagnosis; only the early-warning result is predictive."
+- [ ] **One-sided vs two-sided tests.** The text uses one-sided tests and the Fig. 5 stars use two-sided ones. Say so in the caption.
+
+### Minor (mention, or fix if time allows)
+- [ ] **Nested hard IRQs are counted twice.** A softirq's duration includes any hard IRQ inside it, and `irq = softirq_ns + hardirq_ns`. It is a small overestimate; state it.
+- [ ] **Loopback NET_RX runs in the sender's context**, so a net thread's own protocol work is charged as "interrupt time". Add it to threats to validity.
+- [ ] Header comment in `src/tlat.bpf.c:19` describes only uprobe windows; add `MODE_SHM`.
+- [ ] `ksnap_take` ([src/tlbench.c:178](src/tlbench.c#L178)) silently returns a possibly torn snapshot after 8 retries. Count give-ups in `meta.json`.
+- [ ] `slot_ts()` claims a slot with a plain write. Use `__sync_val_compare_and_swap` (collisions were 0, so this is theoretical).
+- [ ] The app writes `last_wake_delay = 0` into a slot the kernel also writes (benign race). Add a comment.
+- [ ] Expect a viva question on the overhead table: kv "counters only" is 33% *faster* than untraced (closed-loop noise, ±17%).
+
 ## Already done (no action)
 - Overhead table (5 modes; ns/req includes BPF run time) and kv-mid A/B test.
 - "We found no…" gap wording.
