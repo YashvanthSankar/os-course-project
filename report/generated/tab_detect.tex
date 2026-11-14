@@ -1,14 +1,14 @@
-\begin{table}[t]\centering\caption{Tail-request detection, PR-AUC [run-bootstrap 95\% CI]. Train: cpu/kv reps 0--2; test: reps 3--4; net never seen. LR logistic regression, RF random forest; rules: total OS delay $>\tau$ (aligned), PSI CPU $>\tau$ (aggregate). Base rate (= PR-AUC of a random ranking): test \baseApTest, net \baseApHeld.}\label{tab:detect}\scriptsize\setlength{\tabcolsep}{2.5pt}
-\begin{tabular}{llrr}\toprule
-features & model & test (cpu/kv) & held-out (net)\\\midrule
-aligned & rule & 0.55 [0.39,0.64] & 0.53 [0.39,0.61] \\
-aligned & LR & 0.55 [0.44,0.66] & 0.50 [0.38,0.56] \\
-aligned & RF & 0.65 [0.53,0.75] & 0.42 [0.34,0.47] \\
-aligned, own only & RF & 0.41 [0.31,0.52] & 0.05 [0.03,0.07] \\
-aggregate & rule & 0.45 [0.33,0.52] & 0.18 [0.17,0.20] \\
-aggregate & LR & 0.58 [0.50,0.64] & 0.26 [0.18,0.37] \\
-aggregate & RF & 0.63 [0.56,0.68] & 0.24 [0.15,0.37] \\
-queue proxy & LR & 0.94 [0.88,0.96] & 0.55 [0.44,0.61] \\
-proxy+aggr. & RF & 0.96 [0.93,0.98] & 0.36 [0.31,0.39] \\
-proxy+aligned & RF & 0.96 [0.92,0.98] & 0.47 [0.40,0.52] \\
+\begin{table}[t]\centering\caption{Tail-request detection: PR-AUC [run-bootstrap 95\% CI] and F1 at the F1-optimal training threshold. Train: cpu/kv reps 0--2; test: reps 3--4; net never seen. LR logistic regression, RF random forest; rules: total OS delay $>\tau$ (aligned), PSI CPU $>\tau$ (aggregate). Base rate (= PR-AUC of a random ranking): test \baseApTest, net \baseApHeld.}\label{tab:detect}\scriptsize\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{llrrrr}\toprule
+& & \multicolumn{2}{c}{test (cpu/kv)} & \multicolumn{2}{c}{held-out (net)}\\
+features & model & PR-AUC & F1 & PR-AUC & F1\\\midrule
+aligned & rule & 0.55 [0.39,0.64] & 0.56 & 0.53 [0.39,0.61] & 0.58 \\
+aligned & LR & 0.55 [0.44,0.66] & 0.57 & 0.50 [0.38,0.56] & 0.60 \\
+aligned & RF & 0.65 [0.53,0.75] & 0.59 & 0.42 [0.34,0.47] & 0.56 \\
+aggregate & rule & 0.45 [0.33,0.52] & 0.56 & 0.18 [0.17,0.20] & 0.17 \\
+aggregate & LR & 0.58 [0.50,0.64] & 0.59 & 0.26 [0.18,0.37] & 0.22 \\
+aggregate & RF & 0.63 [0.56,0.68] & 0.62 & 0.24 [0.15,0.37] & 0.09 \\
+queue proxy & LR & 0.94 [0.88,0.96] & 0.90 & 0.55 [0.44,0.61] & 0.49 \\
+proxy+aggr. & RF & 0.96 [0.93,0.98] & 0.92 & 0.36 [0.31,0.39] & 0.49 \\
+proxy+aligned & RF & 0.96 [0.92,0.98] & 0.92 & 0.47 [0.40,0.52] & 0.52 \\
 \bottomrule\end{tabular}\end{table}

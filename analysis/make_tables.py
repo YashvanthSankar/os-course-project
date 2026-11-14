@@ -10,6 +10,7 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -42,6 +43,31 @@ def main():
 
     def M(name, val):
         macros.append(f"\\newcommand{{\\{name}}}{{{val}}}")
+
+    # ---------------- latency, memory, stability, false-alarm macros
+    lat = pd.read_csv(res_dir / "latency_summary.csv")
+    base = lat[lat.tracer == "none"]
+    for _, r in base.iterrows():
+        k = f"{r.workload.capitalize()}{r.load.capitalize()}"
+        for q, qn in (("p50", "PFifty"), ("p95", "PNinetyFive"), ("p99", "PNinetyNine")):
+            M(f"lat{k}{qn}", f"{r[q] / 1e3:.0f}")
+    M("cvMin", f"{base.p99_cv.min():.2f}"); M("cvMax", f"{base.p99_cv.max():.1f}")
+    ov = pd.read_csv(res_dir / "overhead_summary.csv")
+    M("memCnt", f"{ov[ov.tracer == 'shm'].map_kb.max() / 1024:.1f}")
+    M("memRb", f"{ov[ov.tracer == 'attrib'].map_kb.max() / 1024:.0f}")
+    stab = pd.DataFrame(R.get("attribution_stability_std", []))
+    if not stab.empty:
+        sc = [c for c in stab.columns if c.startswith("share_")]
+        v = stab[sc].values.ravel()
+        M("stabMed", f"{100 * np.median(v):.1f}")
+        M("stabNinety", f"{100 * np.percentile(v, 90):.1f}")
+        mx = stab.set_index("cond")[sc].max(axis=1)
+        M("stabMax", f"{100 * mx.max():.0f}"); M("stabMaxCond", mx.idxmax().replace("-", " "))
+    det0 = pd.read_csv(res_dir / "detection.csv")
+    for fs, key in (("aligned", "Al"), ("aggregate@20ms", "Ag")):
+        g = det0[(det0.features == fs) & (det0.model == "forest")]
+        M(f"faK{key}Min", f"{g.fa_per_min.min() / 1e3:.0f}")
+        M(f"faK{key}Max", f"{g.fa_per_min.max() / 1e3:.0f}")
 
     # ---------------- latency table
     lat = pd.read_csv(res_dir / "latency_summary.csv")
@@ -109,11 +135,11 @@ def main():
     # ---------------- detection table
     det = pd.DataFrame(R["detection"])
     order = [("aligned", "rule: OS delay > τ"), ("aligned", "logreg"), ("aligned", "forest"),
-             ("aligned (own window only)", "forest"), ("aggregate@20ms", None),
+             ("aggregate@20ms", None),
              ("aggregate@20ms", "logreg"), ("aggregate@20ms", "forest"),
              ("queue-length proxy (control)", "logreg"), ("control + aggregate", "forest"),
              ("control + aligned", "forest")]
-    label = {"aligned": "aligned", "aligned (own window only)": "aligned, own only",
+    label = {"aligned": "aligned", "aligned (own window only)": "own only",
              "aggregate@20ms": "aggregate", "queue-length proxy (control)": "queue proxy",
              "control + aggregate": "proxy+aggr.", "control + aligned": "proxy+aligned"}
     sets = list(dict.fromkeys(det.set))
@@ -134,15 +160,18 @@ def main():
                 continue
             r = h.iloc[0]
             cells.append(f"{r.ap:.2f} [{r.ap_lo:.2f},{r.ap_hi:.2f}]")
+            cells.append(f"{r.f1:.2f}")
         rows.append(" & ".join(cells) + " \\\\")
     (out / "tab_detect.tex").write_text(
-        "\\begin{table}[t]\\centering\\caption{Tail-request detection, PR-AUC [run-bootstrap 95\\% CI]. "
+        "\\begin{table}[t]\\centering\\caption{Tail-request detection: PR-AUC [run-bootstrap 95\\% CI] and F1 at "
+        "the F1-optimal training threshold. "
         "Train: cpu/kv reps 0--2; test: reps 3--4; net never seen. LR logistic regression, RF random "
         "forest; rules: total OS delay $>\\tau$ (aligned), PSI CPU $>\\tau$ (aggregate). Base rate "
         "(= PR-AUC of a random ranking): test \\baseApTest, net \\baseApHeld.}"
         "\\label{tab:detect}\\scriptsize\\setlength{\\tabcolsep}{2.5pt}\n"
-        "\\begin{tabular}{llrr}\\toprule\n"
-        "features & model & test (cpu/kv) & held-out (net)\\\\\\midrule\n" +
+        "\\begin{tabular}{llrrrr}\\toprule\n"
+        "& & \\multicolumn{2}{c}{test (cpu/kv)} & \\multicolumn{2}{c}{held-out (net)}\\\\\n"
+        "features & model & PR-AUC & F1 & PR-AUC & F1\\\\\\midrule\n" +
         "\n".join(rows) + "\n\\bottomrule\\end{tabular}\\end{table}\n")
     for fs, key in (("aligned", "Al"), ("aggregate@20ms", "Ag"), ("queue-length proxy (control)", "Q"),
                     ("control + aligned", "QAl"), ("control + aggregate", "QAg")):

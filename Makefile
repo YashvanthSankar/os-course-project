@@ -38,9 +38,12 @@ $(B)/hiccup: src/hiccup.c | $(B)
 clean:
 	rm -rf $(B)
 
-.PHONY: all clean
+.PHONY: all clean test
 
 # Submission bundles (run on the host after results/ and report/ are final)
+test: all
+	python3 scripts/smoke_test.py
+
 package:
 	rm -rf dist && mkdir -p dist
 	cd report && zip -qr ../dist/report_latex.zip main.tex refs.bib sections figures generated

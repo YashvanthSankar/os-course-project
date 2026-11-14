@@ -4,6 +4,7 @@ set -euo pipefail
 sudo apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
 	build-essential clang llvm libbpf-dev libelf-dev zlib1g-dev pkg-config \
+	libssl-dev git rsync zstd \
 	"linux-tools-$(uname -r)" linux-tools-common \
 	python3-numpy python3-pandas python3-sklearn python3-matplotlib python3-scipy
 echo "toolchain installed"

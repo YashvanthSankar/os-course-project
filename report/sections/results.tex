@@ -1,7 +1,7 @@
 \section{Experimental Results}
 \label{sec:results}
 
-We ran 336 runs: 45 calibration (5 per condition), 90 main, 62 overhead,
+We ran 336 runs: 45 calibration, 90 main, 62 overhead,
 70 intervention, 16 A/B, 8 receiver-placement, and 45 after review (36
 validation, 9 fresh net). The noise gate waits rather than rejects; of the
 first 318 runs \nwWaited{} waited (median \nwMed\,s, longest
@@ -12,8 +12,7 @@ In all \valRuns{} traced runs every request received kernel features
 (coverage \valCoverage\%), there were no slot collisions, and
 \valDrops{} events were lost. The accounting identity closed within
 5\,$\mu$s for at least \valWithin\% of requests in every run (median
-residual 167\,ns, which is the distance between the timestamp and the slot
-snapshot). For a request that never leaves the CPU this is close to true
+residual 167\,ns). For a request that never leaves the CPU this is close to true
 by construction; the real test is the \idCampSwShare\% of requests switched
 out inside their window. For those it held for \idCampSwMed\% of requests in
 the median run, but only \idCampSwMin\% in the worst. Part of that gap was a
@@ -25,28 +24,43 @@ kernel preempts voluntarily), so the campaign data are unaffected.
 Generator lateness was below 60\,$\mu$s at p99 in \genOk{} of
 \genAll{} main runs; the worst run reached \genMax.
 
-\textbf{Platform collapse episodes.} A minority of runs, traced or not,
-contain episodes of a few hundred milliseconds in which the queue grows to
-tens of milliseconds or more (the shelves in Fig.~\ref{fig:latency}). In the worst kv run, the median service time
-doubled (22.5$\to$49.8\,$\mu$s) for 600\,ms with no scheduler, IRQ or
-blocking events, consistent with the host slowing the vCPU. A single episode in a calibration run raised its p99 to
-\thrMaxCpuMid{} for cpu-mid, against a five-run median of \thrCpuMid{}, so
-we use the median as the tail threshold.
+\textbf{Baseline latency.} Untraced at mid load, p50/p95/p99 are
+\latCpuMidPFifty/\latCpuMidPNinetyFive/\latCpuMidPNinetyNine\,$\mu$s (cpu),
+\latKvMidPFifty/\latKvMidPNinetyFive/\latKvMidPNinetyNine\,$\mu$s (kv) and
+\latNetMidPFifty/\latNetMidPNinetyFive/\latNetMidPNinetyNine\,$\mu$s (net);
+the run-to-run CV of p99 is \cvMin--\cvMax{}, so we report medians of five
+runs. The share of tail latency per delay component varies across the
+five runs of a condition by a median SD of \stabMed{} points (at most
+\stabMax, unstressed kv).
+
+\textbf{Collapse episodes.} Some runs, traced or not, contain episodes of
+a few hundred ms in which the queue grows to tens of ms (shelves in
+Fig.~\ref{fig:latency}). In the worst kv run, service time doubled for
+600\,ms with no scheduler, IRQ or blocking events, consistent with the host
+slowing the vCPU. One episode raised a calibration p99 to \thrMaxCpuMid{}
+(cpu-mid; five-run median \thrCpuMid), hence the median threshold.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.93\textwidth]{figures/fig_latency.pdf}
+\includegraphics[width=0.88\textwidth]{figures/fig_latency.pdf}
 \caption{Latency CCDFs pooled over 5 runs per condition (solid: untraced;
 dashed: \sys). Shelves are collapse episodes in individual runs.}
 \label{fig:latency}
+\end{figure*}
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/fig_pr.pdf}
+\caption{Precision--recall curves for tail-request detection. Grey line:
+base rate (cpu/kv test includes stressed runs).}
+\label{fig:pr}
 \end{figure*}
 
 \subsection{Overhead}
 \label{sec:overhead}
 In closed loop, throughput varied by up to $\pm$17\% between identical
-untraced runs, so the throughput differences in
-Table~\ref{tab:overhead} are within noise; untraced kv was even the
-slowest. Tracer CPU per request is the
+untraced runs, so the throughput differences in Fig.~\ref{fig:overhead}
+are within noise. Maps take \memCnt\,MB, or \memRb\,MB
+with the ring buffer, and no events were dropped. Tracer CPU per request is the
 stable measure. Shared counters cost \ovNsCpuShm{}\,ns (cpu) and
 \ovNsKvShm{}\,ns (kv) per request, about as much as the counters-only
 baseline. Uprobe windows cost \ovNsKvAttrib--\ovNsCpuAttrib{}\,ns
@@ -60,7 +74,14 @@ p99 \abPninetyNone{} vs.\ \abPninetyShm{} ($p{=}\abPninetyP$), and
 Eight runs per side rule out only large effects; the per-request cost,
 about 0.2\% (cpu) and 0.5\% (kv) of service time, is the firmer evidence.
 
-\input{generated/tab_overhead}
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\columnwidth]{figures/fig_overhead.pdf}
+\caption{Closed-loop throughput loss vs.\ untraced (median of 5 runs, bars:
+bootstrap 95\% CI; dashed: 5\% budget). Tracer CPU per request (BPF run
+time + collector, excluding uprobe traps) is given in the text.}
+\label{fig:overhead}
+\end{figure}
 
 \subsection{Tail detection (H1)}
 \label{sec:h1}
@@ -85,7 +106,10 @@ depends on where the tails come from.} With net held out (base rate
 against \apAgFHeld, \apAgLHeld{} and \apAggRuleHeld. Rotation does not
 confirm this: held-out cpu gives \rotCpuAlF{} vs.\ \rotCpuAgF{} (forest) but
 \rotCpuAlL{} vs.\ \rotCpuAgL{} (logistic), held-out kv \rotKvAlF{} vs.\
-\rotKvAgF{} and \rotKvAlL{} vs.\ \rotKvAgL.
+\rotKvAgF{} and \rotKvAlL{} vs.\ \rotKvAgL. At the F1-optimal threshold
+the aligned forest raises \faKAlMin--\faKAlMax{}k false alarms per minute,
+the aggregate forest \faKAgMin--\faKAgMax{}k, against 0.4--4M requests per
+minute.
 On \freshRuns{} fresh net runs with unused seeds and no stressor (base
 rate \freshBasePct\%), aligned features drop to \freshAlL{} against
 \freshAgL{} for aggregates. The source of the tails explains the
@@ -102,24 +126,15 @@ delayed by OS events that happened to the requests ahead of them, not to
 themselves. Scheduler features carry the most information (without them:
 \ablNoSchedHeld); interrupt and blocking features add little on their own.
 
-\begin{figure*}[t]
-\centering
-\includegraphics[width=0.93\textwidth]{figures/fig_pr.pdf}
-\caption{Precision--recall curves for tail-request detection. Grey line:
-base rate (cpu/kv test includes stressed runs).}
-\label{fig:pr}
-\end{figure*}
+
 \input{generated/tab_detect}
 
-\textbf{Why net is hard.} Net tails are caused on the client side.
-Splitting their latency shows that the response path
-($t_\mathrm{done}-t_\mathrm{end}$) dominates: the client's receive thread
-shares CPU~3 with the spinning generator and waits for its time slice.
-Moving the receiver to CPU~2 cut the response-path p99 from
-\rcvGenRespP{} to \rcvOwnRespP, but total p99 did not change
-(\rcvGenP{} vs.\ \rcvOwnP): the server-side p99 rose to \rcvOwnServer{}
-as the receiver now competes with a worker. The delay moves with the
-co-located thread, outside the request window.
+\textbf{Why net is hard.} Net tails arise on the client: the response path
+($t_\mathrm{done}-t_\mathrm{end}$) dominates because the receive thread
+shares CPU~3 with the spinning generator. Moving it to CPU~2 cut the
+response-path p99 from \rcvGenRespP{} to \rcvOwnRespP, but total p99 stayed
+(\rcvGenP{} vs.\ \rcvOwnP) as the server side rose to \rcvOwnServer: the
+delay moves with the co-located thread, outside the request window.
 
 \begin{figure}[t]
 \centering
@@ -138,21 +153,18 @@ episode in the next one with PR-AUC \ewApTest{} (test) and \ewApHeld{}
 Fig.~\ref{fig:signature} gives each intervention's effect on each delay
 type. \textbf{\hTwoRaw{} of \hTwoN{} predictions hold} at $p<0.05$
 (one-sided Mann--Whitney, 5 vs.\ 5 runs, smallest possible $p$ 0.004);
-\hTwoHolm{} survive Holm correction for \hTwoN{} tests:
-\begin{itemize}
-\item The CPU hog raises mean preemption wait per request
+\hTwoHolm{} survive Holm correction for \hTwoN{} tests. The CPU hog raises
+mean preemption wait per request
 \sigCpuHogRunq$\times$ (cpu, \absCpuHogRunqCtl$\to$\absCpuHogRunqInt\,$\mu$s),
 \sigKvHogRunq$\times$ (kv, \absKvHogRunqCtl$\to$\absKvHogRunqInt\,$\mu$s) and
 \sigNetHogRunq$\times$ (net, \absNetHogRunqCtl$\to$\absNetHogRunqInt\,$\mu$s),
-and wakeup delay 15--46$\times$.
-The ratios are large because the baseline is tens of nanoseconds. IRQ time
-and blocking do not change.
-\item Moving the workers off the hog cuts preemption wait to
+and wakeup delay 15--46$\times$
+(large ratios because the baseline is tens of ns); IRQ time and blocking do
+not change. Moving the workers off the hog cuts preemption wait to
 \sigCpuMoveRunq$\times$ (cpu, \absCpuMoveRunqCtl$\to$\absCpuMoveRunqInt\,$\mu$s) and
 \sigKvMoveRunq$\times$ (kv, \absKvMoveRunqCtl$\to$\absKvMoveRunqInt\,$\mu$s).
-\item The I/O writer raises kv blocking \sigKvIoBlk$\times$
+The I/O writer raises kv blocking \sigKvIoBlk$\times$
 (\absKvIoBlkCtl$\to$\absKvIoBlkInt\,$\mu$s) and IRQ time \sigKvIoIrq$\times$.
-\end{itemize}
 Not significant after correction ($p{=}0.048$): moving the kv workers,
 and the flood on cpu (IRQ time +0.16\,$\mu$s per request).
 The two misses are informative. The softirq flood had no significant
@@ -165,7 +177,7 @@ and one that only per-thread IRQ charging can reveal.
 
 \begin{figure}[!htb]
 \centering
-\includegraphics[width=\columnwidth]{figures/fig_signature.pdf}
+\includegraphics[width=0.9\columnwidth]{figures/fig_signature.pdf}
 \caption{Intervention signatures: fold change of mean per-request delay
 vs.\ the matching control (* two-sided Mann--Whitney $p<0.05$, unlike
 the one-sided tests in the text;
