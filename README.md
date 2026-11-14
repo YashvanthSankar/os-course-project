@@ -15,6 +15,13 @@ Main pieces:
 - **`analysis/analyze.py`**: per-request decomposition, detection (rule / logistic / forest; split by run; held-out workload), ablations, intervention tests, figures.
 - **`opensource/`**: upstream patch for bcc `runqlat` (`-S`, separating wakeup and preemption latency).
 
+Submission files (in [dist/](dist/), rebuilt with `make package`):
+
+- [TailTag_report.pdf](dist/TailTag_report.pdf): the 6-page IEEE report
+- [report_latex.zip](dist/report_latex.zip): LaTeX sources of the report
+- [project_code.zip](dist/project_code.zip): code, scripts, analysis, results, docs
+- [CODE_GUIDE.pdf](dist/CODE_GUIDE.pdf): code guide and reproduction instructions
+
 Docs:
 
 - [docs/LEARN.md](docs/LEARN.md): background concepts, from scratch

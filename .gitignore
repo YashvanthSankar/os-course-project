@@ -13,4 +13,3 @@ report/*.bbl
 report/*.blg
 report/main.pdf
 report/figures/*.png
-dist/
