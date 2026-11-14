@@ -322,6 +322,30 @@ def main():
         if v:
             M("freshBase", f"{v['base_rate']:.2f}"); M("freshRuns", v["runs"])
             M("freshBasePct", f"{100 * v['base_rate']:.1f}")
+    fv = res_dir / "fixval2.json"
+    if fv.exists():
+        Z = json.loads(fv.read_text())
+        a, b = Z["fixval"], Z["fixval2"]
+        M("idFixTwoSwMin", f"{100 * b['within_switched_min']:.1f}")
+        M("idFixTwoSwMed", f"{100 * b['within_switched_median']:.1f}")
+        M("idFixOneSwMin", f"{100 * a['within_switched_min']:.1f}")
+        M("preSleep", b.get("preempt_sleeping_total", 0))
+        M("preAll", f"{b.get('npreempt_total', 0):,}")
+        M("noWake", b.get("no_wake_gap_total", 0))
+        M("preAllPct", f"{100 * b.get('npreempt_share_of_switches', 0):.0f}")
+        M("noWakePct", f"{100 * b.get('no_wake_gap_share_of_switches', 0):.1f}")
+        M("noWakeUs", f"{b.get('no_wake_gap_mean_us', 0):.0f}")
+    # H2 with Holm correction over the nine pre-stated tests
+    h2 = R.get("h2_tests", [])
+    if h2:
+        ps = sorted(t["p"] for t in h2)
+        keep = 0
+        for i, p_ in enumerate(ps):
+            if p_ <= 0.05 / (len(ps) - i):
+                keep += 1
+            else:
+                break
+        M("hTwoRaw", sum(p_ < 0.05 for p_ in ps)); M("hTwoHolm", keep); M("hTwoN", len(ps))
     ns = res_dir / "no_signal.json"
     if ns.exists():
         z = json.loads(ns.read_text())

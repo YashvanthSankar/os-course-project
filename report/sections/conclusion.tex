@@ -10,7 +10,8 @@ aggregate counts) detects them. Request-aligned kernel telemetry did
 better on one held-out workload, but not when the held-out workload was
 rotated or the runs repeated with fresh seeds, so its value lies in naming
 the cause, not in detection. Controlled interventions moved
-exactly the predicted delay component in seven of nine cases. The
+the predicted delay component in \hTwoRaw{} of \hTwoN{} cases
+(\hTwoHolm{} after correcting for multiple tests). The
 remaining cases, together with the client-side receiver delay of the net
 workload, show where the method stops: OS delay on threads outside the
 request window, and host effects invisible to the guest. Future work is

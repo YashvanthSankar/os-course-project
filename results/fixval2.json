@@ -1,0 +1,25 @@
+{
+ "fixval": {
+  "runs": 18,
+  "switched_share": 0.0072471861607828845,
+  "within_switched_min": 0.9807692307692307,
+  "within_switched_median": 0.9985815373071887,
+  "within_all_min": 0.9831610749809785,
+  "runq_share_of_offcpu": 0.4207423248007635
+ },
+ "fixval2": {
+  "runs": 18,
+  "switched_share": 0.004729531415693846,
+  "within_switched_min": 0.9883720930232558,
+  "within_switched_median": 1.0,
+  "within_all_min": 0.9968349620702068,
+  "runq_share_of_offcpu": 0.3710871996925397,
+  "preempt_sleeping_share_of_switches": 0.0,
+  "preempt_sleeping_total": 0,
+  "npreempt_total": 15185,
+  "npreempt_share_of_switches": 0.0018165902965007936,
+  "no_wake_gap_total": 0,
+  "no_wake_gap_share_of_switches": 0.0,
+  "no_wake_gap_mean_us": 0.0
+ }
+}

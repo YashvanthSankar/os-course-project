@@ -328,11 +328,14 @@ int main(int argc, char **argv)
 		"\"raw_bytes\":%llu,\"rb_drops\":%llu,\"rb_submitted\":%llu,"
 		"\"collector_user_s\":%.4f,\"collector_sys_s\":%.4f,\"collector_maxrss_kb\":%ld,"
 		"\"bpf_run_ns\":%llu,\"bpf_run_cnt\":%llu,\"map_bytes_max\":%zu,"
-		"\"slot_collisions\":%llu}\n",
+		"\"slot_collisions\":%llu,\"preempt_sleeping\":%llu,\"npreempt\":%llu,\"no_wake_gap\":%llu,\"no_wake_gap_ns\":%llu,\"nswitch\":%llu}\n",
 		A.mode, (t_end - t_start) / 1e9, n_req, n_raw, raw_bytes,
 		(unsigned long long)cur.rb_drops, (unsigned long long)cur.rb_records,
 		ucpu, scpu, ru1.ru_maxrss, run_ns, run_cnt, map_bytes,
-		(unsigned long long)cur.slot_collisions);
+		(unsigned long long)cur.slot_collisions,
+		(unsigned long long)cur.preempt_sleeping, (unsigned long long)cur.npreempt,
+		(unsigned long long)cur.no_wake_gap, (unsigned long long)cur.no_wake_gap_ns,
+		(unsigned long long)cur.nswitch);
 	fclose(fj);
 	if (f_req) fclose(f_req);
 	if (f_raw) fclose(f_raw);

@@ -47,6 +47,14 @@ namespace inode numbers, which do not have that guarantee, so `-S` with
   handlers, `true` from the `TASK_RUNNING` branch of `handle_switch()`.
 - Without `-S`, behaviour and output are unchanged. The extra cost is 8
   bytes per tracked task in `start`.
+- Known limitation, kept on purpose: like upstream, the switch handler
+  treats a task as still runnable only when `get_task_state(prev) ==
+  TASK_RUNNING`. A task preempted after it set `TASK_INTERRUPTIBLE` stays on
+  the runqueue too (`__schedule()` checks the `preempt` flag first), so its
+  wait is missed, or labelled a wakeup if a wakeup arrives first. Using
+  `preempt || state == TASK_RUNNING` would fix it but also changes the
+  default output, so it belongs in a separate PR. In our 18 test runs on
+  Linux 6.8 this case occurred 0 times.
 
 ## Motivation / evidence
 

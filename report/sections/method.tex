@@ -31,7 +31,8 @@ own execution. A run starts only when every vCPU loses less than 5\% of its time
 each thread of the target process, a small state machine keeps cumulative
 counters:
 (i)~\emph{preemption wait}, from a switch-out while still runnable
-(\texttt{prev\_state}=\texttt{TASK\_RUNNING}) to the next switch-in;
+(\texttt{preempt} set or \texttt{prev\_state}=\texttt{TASK\_RUNNING})
+to the next switch-in;
 (ii)~\emph{wakeup delay}, from \texttt{sched\_wakeup} to switch-in;
 (iii)~\emph{blocked time}, from a voluntary switch-out to the wakeup;
 (iv)~on-CPU time; (v)~hard and soft IRQ time charged to the

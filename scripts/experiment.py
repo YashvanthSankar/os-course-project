@@ -213,6 +213,15 @@ def exp_fixval():
         run_one("fixval", f"{wl}-{st}-r{rep}", wl, "mid", PRIMARY, stressor=st, seed=700 + rep)
 
 
+def exp_fixval2():
+    """Same 18 conditions and seeds as fixval, rerun after sched_switch was
+    changed to honour the preempt flag (third review)."""
+    plan = [(wl, st, rep) for wl in ("cpu", "kv", "net") for st in ("none", "cpuhog") for rep in range(3)]
+    random.Random(19).shuffle(plan)
+    for wl, st, rep in plan:
+        run_one("fixval2", f"{wl}-{st}-r{rep}", wl, "mid", PRIMARY, stressor=st, seed=700 + rep)
+
+
 def exp_netfresh():
     """Fresh held-out net runs (seeds never used before) for a test set that
     was not seen while the features were designed (TODO 1)."""
@@ -294,10 +303,10 @@ def main():
     steps = {"pilot": exp_pilot, "calibrate": exp_calibrate, "main": exp_main,
              "overhead": exp_overhead, "interventions": exp_interventions,
              "abtest": exp_abtest, "netrcv": exp_netrcv,
-             "fixval": exp_fixval, "netfresh": exp_netfresh}
+             "fixval": exp_fixval, "fixval2": exp_fixval2, "netfresh": exp_netfresh}
     if what == "all":
         for k in ("calibrate", "main", "overhead", "interventions", "abtest", "netrcv",
-                  "fixval", "netfresh"):
+                  "fixval", "fixval2", "netfresh"):
             steps[k]()
     else:
         steps[what]()

@@ -16,10 +16,19 @@
  *
  * Time in WOKEN is wakeup delay, time in RUNNABLE is preemption (runqueue)
  * delay, time in SLEEP is blocked time. Hard/soft IRQ time is charged to the
- * thread that was interrupted. Request windows come from uprobes on
- * tl_req_begin()/tl_req_end(); the end probe emits one record with the
- * counter deltas, so aggregation happens in the kernel and only one small
- * record per request crosses into user space.
+ * thread that was interrupted. A switch-out counts as RUNNING (involuntary)
+ * when the kernel says it was a preemption or prev_state is TASK_RUNNING,
+ * the same rule __schedule() uses for nivcsw: a thread preempted after it
+ * set TASK_INTERRUPTIBLE stays on the runqueue.
+ *
+ * Request windows, two ways:
+ *  MODE_SHM    the counters live in the mmap-able 'slots' array; the
+ *              application snapshots its own slot at request begin/end with
+ *              plain loads (no trap, no record per request).
+ *  MODE_ATTRIB uprobes on tl_req_begin()/tl_req_end(); the end probe emits
+ *              one record with the counter deltas through the ring buffer.
+ * MODE_COUNT keeps only the global per-CPU counters, MODE_STREAM sends
+ * every raw event to user space (overhead comparison only).
  */
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
@@ -109,8 +118,9 @@ static __always_inline struct tstate *slot_ts(__u32 tid, int claim)
 	if (s->tid == tid)
 		return s;
 	if (s->tid == 0 && claim) {
-		s->tid = tid;
-		return s;
+		/* two CPUs may try to claim the same free slot at once */
+		if (__sync_val_compare_and_swap(&s->tid, 0, tid) == 0 || s->tid == tid)
+			return s;
 	}
 	if (claim) {
 		struct gcounters *g = gc();
@@ -168,7 +178,8 @@ int BPF_PROG(on_switch, bool preempt, struct task_struct *prev,
 {
 	__u64 now = bpf_ktime_get_ns();
 	struct gcounters *g = gc();
-	int involuntary = prev_state == 0; /* TASK_RUNNING */
+	/* same test as __schedule(): preempted, or still TASK_RUNNING */
+	int involuntary = preempt || prev_state == 0;
 
 	if (g) {
 		g->nswitch++;
@@ -183,6 +194,11 @@ int BPF_PROG(on_switch, bool preempt, struct task_struct *prev,
 			stream(EV_SWITCH_OUT, tid, prev_state, now);
 		} else {
 			struct tstate *s = get_ts(tid);
+			if (g && preempt) {
+				g->npreempt++;
+				if (prev_state)
+					g->preempt_sleeping++;
+			}
 			if (s) {
 				if (s->oncpu_ts)
 					s->oncpu_ns += now - s->oncpu_ts;
@@ -214,6 +230,17 @@ int BPF_PROG(on_switch, bool preempt, struct task_struct *prev,
 					s->wake_ns += d;
 					s->last_wake_delay = d;
 					s->wake_ts = 0;
+				}
+				if (s->sleep_ts) {
+					/* back on CPU with no wakeup seen: it never
+					 * left the runqueue (e.g. a pending signal),
+					 * so the gap was a runqueue wait */
+					s->runq_ns += now - s->sleep_ts;
+					if (g) {
+						g->no_wake_gap++;
+						g->no_wake_gap_ns += now - s->sleep_ts;
+					}
+					s->sleep_ts = 0;
 				}
 				s->oncpu_ts = now;
 				s->on_cpu = 1;

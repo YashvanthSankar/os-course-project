@@ -30,6 +30,6 @@ sudo bash scripts/run_all.sh
 ## Data
 
 - **Sample run** (in the repo): [data/sample/](data/sample/) — one complete raw run, gzip-compressed.
-- **Full raw data** (~16 GB, 318 runs): **TODO — add the Drive/Zenodo link.** Archive `tailtag_raw_data.tar.zst`, 4.2 GB, SHA-256 `a9bc7508e738b23361dcad6a8695022478e2869d33a5e7195ae597f6a18c0044`.
+- **Full raw data** (~20 GB, 336 runs): **TODO — add the Drive/Zenodo link.** Archive `tailtag_raw_data.tar.zst`, 4.4 GB, SHA-256 `668d096981e4fab57d59fcc6694d261638905369f4944c9bea45317d415feda5`.
 - **Processed results** (every table and figure in the report): [results/](results/)
 - **Data dictionary:** [docs/REPRODUCE.md](docs/REPRODUCE.md) §6

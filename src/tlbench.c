@@ -165,6 +165,7 @@ static inline volatile struct tstate *my_slot(pid_t tid)
 }
 
 static unsigned long ksnap_retries;    /* torn snapshots detected and retried */
+static unsigned long ksnap_giveups;    /* still torn after all retries (kept as is) */
 
 /*
  * Snapshot the thread's kernel counters. oncpu_ts/oncpu_ns change together
@@ -199,6 +200,8 @@ static inline void ksnap_take(struct ksnap *k, volatile struct tstate *s)
 			return;
 		__atomic_fetch_add(&ksnap_retries, 1, __ATOMIC_RELAXED);
 	}
+	/* eight switches in a row during one snapshot: keep the last copy */
+	__atomic_fetch_add(&ksnap_giveups, 1, __ATOMIC_RELAXED);
 }
 
 /* begin/end of a request window as seen through the shared counters */
@@ -228,6 +231,9 @@ static inline void kwin_end(struct kwin *w, uint64_t id)
 		return;
 	struct ksnap b;
 	ksnap_take(&b, w->s);
+	/* The kernel also writes last_wake_delay (at switch-in). This thread is
+	 * running here, so the kernel cannot write the slot at the same time;
+	 * the only effect of a race would be one lost pre-wake value. */
 	w->s->last_wake_delay = 0;
 	struct kfeat *f = &kf[id];
 	f->d.oncpu = b.oncpu - w->a.oncpu;
@@ -846,7 +852,7 @@ int main(int argc, char **argv)
 		"\"iters_per_us\":%.3f,\"t_origin\":%llu,\"wall_s\":%.4f,"
 		"\"completed\":%llu,\"measured\":%llu,\"lost\":%llu,\"queue_overflow\":%llu,"
 		"\"throughput\":%.2f,\"cpu_s\":%.4f,\"maxrss_kb\":%ld,"
-		"\"nvcsw\":%ld,\"nivcsw\":%ld,\"ksnap_retries\":%lu}\n",
+		"\"nvcsw\":%ld,\"nivcsw\":%ld,\"ksnap_retries\":%lu,\"ksnap_giveups\":%lu}\n",
 		mname[C.mode], C.workers, C.rate, C.duration, C.warmup,
 		(unsigned long long)C.seed, C.work_us, C.worker_cpus, C.gen_cpu,
 		C.sync_every, C.lookups, iters_per_us_x1000 / 1000.0,
@@ -854,7 +860,7 @@ int main(int argc, char **argv)
 		(unsigned long long)n_done, (unsigned long long)n_meas,
 		(unsigned long long)n_lost, (unsigned long long)q_overflow,
 		n_done / wall, cpu_s, ru1.ru_maxrss,
-		ru1.ru_nvcsw - ru0.ru_nvcsw, ru1.ru_nivcsw - ru0.ru_nivcsw, ksnap_retries);
+		ru1.ru_nvcsw - ru0.ru_nvcsw, ru1.ru_nivcsw - ru0.ru_nivcsw, ksnap_retries, ksnap_giveups);
 	if (m != stdout)
 		fclose(m);
 	return 0;

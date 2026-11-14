@@ -17,7 +17,7 @@ $(B)/vmlinux.h: | $(B)
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $@
 
 $(B)/tlat.bpf.o: src/tlat.bpf.c src/tlat.h $(B)/vmlinux.h
-	$(CLANG) -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH) -I$(B) -Isrc -c $< -o $@
+	$(CLANG) -O2 -g -target bpf -mcpu=v3 -D__TARGET_ARCH_$(ARCH) -I$(B) -Isrc -c $< -o $@
 
 $(B)/tlat.skel.h: $(B)/tlat.bpf.o
 	$(BPFTOOL) gen skeleton $< > $@
@@ -45,6 +45,8 @@ package:
 	rm -rf dist && mkdir -p dist
 	cd report && zip -qr ../dist/report_latex.zip main.tex refs.bib sections figures generated
 	zip -qr dist/project_code.zip Makefile README.md src scripts analysis docs opensource results -x '*.pyc' -x '*/__pycache__/*'
-	@echo "dist/report_latex.zip and dist/project_code.zip created"
+	cp report/main.pdf dist/TailTag_report.pdf
+	cp docs/CODE_GUIDE.pdf dist/CODE_GUIDE.pdf
+	@echo "dist/: report_latex.zip, project_code.zip, TailTag_report.pdf, CODE_GUIDE.pdf"
 
 .PHONY: package

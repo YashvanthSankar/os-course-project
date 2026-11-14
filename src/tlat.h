@@ -76,6 +76,10 @@ struct gcounters {
 	__u64 rb_drops;          /* ring buffer reservations that failed */
 	__u64 slot_collisions;   /* MODE_SHM: two target threads mapped to one slot */
 	__u64 rb_records;
+	__u64 preempt_sleeping;  /* target switch-outs: preempted with prev_state != RUNNING */
+	__u64 npreempt;          /* target switch-outs with the preempt flag set */
+	__u64 no_wake_gap;       /* target switch-ins after a voluntary switch-out with no wakeup seen */
+	__u64 no_wake_gap_ns;
 };
 
 /* raw event, used only in MODE_STREAM */
