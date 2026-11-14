@@ -4,7 +4,7 @@
 # Needs the packages from scripts/setup_vm.sh (incl. libssl-dev for bpftool).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BCC_COMMIT=c398a9a7a41cba623b520cda27457b92d7fcad2b   # upstream master, 2 Oct 2026
+BCC_COMMIT=c398a9a7a41cba623b520cda27457b92d7fcad2b   # upstream master on 2 Oct 2026; patch also applies to 34d9495a (4 Oct)
 WORK=${WORK:-$HOME/work}
 mkdir -p "$WORK" && cd "$WORK"
 if [ ! -d bcc ]; then

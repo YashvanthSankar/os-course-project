@@ -441,6 +441,6 @@ Brendan Gregg's *BPF Performance Tools* (2019), and bcc's `runqlat`,
 1. Using that per-thread table for **per-request latency attribution**: the app snapshots its slot at request start and end, giving a per-request breakdown (preemption / wakeup / IRQ / blocked) at ~120–220 ns per request, 47–53× cheaper than uprobes.
 2. **Inherited OS delay**: a request is charged for OS delay suffered by the requests queued ahead of it. Without it, held-out PR-AUC drops from 0.42 to 0.05.
 3. **Empirical findings**: the queue-length control beats kernel features in-distribution; aligned telemetry beats aggregates only when tails are OS-induced (held-out rotation and fresh runs did not confirm a general advantage); 50–58% of tails have no OS signal; 7 of 9 intervention signatures held at p < 0.05, 5 of 9 after Holm correction for running 9 tests.
-4. **bcc `runqlat -S`**: splits wakeup and preemption latency (no existing PR found; prepared, still to be built, tested and submitted, which is why the report says "prepare", not "contribute").
+4. **bcc `runqlat -S`**: splits wakeup and preemption latency (no existing PR found; built and tested on 14 Nov, all 4 checks pass; still to be submitted from your own account, which is why the report says "prepare", not "contribute").
 
 Say "as far as our search found", never "nobody has ever done this".

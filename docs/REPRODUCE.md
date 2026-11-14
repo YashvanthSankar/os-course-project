@@ -94,6 +94,14 @@ If that exceeds `NOISE_LIMIT` (default 3%; the reported campaign used 5%
 after the first eight runs), the run waits. The measurement
 before and after each run is stored in its `cond.json`.
 
+**Quick self-check first (about 1 minute):** `sudo make test` runs four
+short real runs (`scripts/smoke_test.py`) and checks that every request gets
+kernel features, nothing is dropped, the accounting identity holds for
+>= 99% of requests, a CPU hog raises preemption wait at least 5x, uprobe
+records join by request id, and the aggregate samples are written.
+
+The bcc patch is tested separately with `bash opensource/build_and_test.sh`.
+
 One command (about 3 hours of experiments plus ~30 minutes of analysis
 on a quiet machine; 336 runs, ~20 GB of raw data):
 

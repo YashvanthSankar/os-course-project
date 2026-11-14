@@ -24,7 +24,8 @@ Quick start (Ubuntu 24.04, inside the VM):
 
 ```bash
 bash scripts/setup_vm.sh && make
-sudo bash scripts/run_all.sh
+sudo make test                 # 1-minute self-check of the whole pipeline
+sudo bash scripts/run_all.sh   # full reproduction
 ```
 
 ## Data

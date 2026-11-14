@@ -1,7 +1,7 @@
 # libbpf-tools/runqlat: add -S/--split to separate wakeup and preemption latency
 
 **Target:** https://github.com/iovisor/bcc (libbpf-tools)
-**Status:** drafted; not yet built or submitted (build and test with `build_and_test.sh`, then submit from your own GitHub account)
+**Status:** built and tested (2026-11-14, Linux 6.8, arm64 VM); applies cleanly to current master `34d9495a`; not yet submitted (submit from your own GitHub account)
 
 ## Summary
 
@@ -70,11 +70,14 @@ merged histogram hides which one moved.
 
 ## Testing
 
-**Not run yet.** Run `opensource/build_and_test.sh` in the Linux VM before
-submitting, and paste its output here. The script builds against upstream
-master `c398a9a7` and checks:
+Built with `opensource/build_and_test.sh` against `c398a9a7` (the patch
+also applies cleanly to master `34d9495a`), Ubuntu 24.04, Linux
+6.8.0-142-generic, arm64:
 
-- `runqlat` without `-S`: output unchanged.
-- `runqlat -S` with a CPU hog pinned to CPU 0: the preemption histogram is populated.
-- `runqlat -S -P`: per-process histograms carry the cause suffix.
-- `runqlat -S --pidnss`: rejected with an error.
+- `runqlat` without `-S`: output unchanged (single histogram).
+- `runqlat -S 3 1` with two CPU-bound threads pinned to CPU 0: the
+  *after preemption* histogram holds 996 of 1001 waits at 2048-4095 us (the
+  hogs' time slice), while *after wakeup* waits stay below 32 us (71 at 0-1 us).
+- `runqlat -S -P`: per-process histograms carry the `[after preemption]` /
+  `[after wakeup]` suffix.
+- `runqlat -S --pidnss`: rejected with "--split cannot be used with --pidnss."

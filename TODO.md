@@ -64,6 +64,10 @@ Open items, most important first.
 - References: 14 in total: 9 papers (8 peer-reviewed conference papers + 1 CACM article), 1 arXiv preprint, 1 conference talk, 3 docs/software/blog. All verified.
 - "No signal" threshold stated (10 µs), now with 5/20 µs sensitivity.
 
+### Assignment checklist pass (2026-11-14)
+- Overhead comparison is now a figure; F1 and false alarms/min, p95, memory and attribution stability added to the report.
+- `sudo make test` self-check added; bcc patch built and tested (all 4 checks pass, applies to current master).
+
 ### Outcome of §7 (2026-11-14)
 - **preempt flag:** fixed exactly as suggested (`preempt || prev_state == 0`, same as `__schedule()` in v6.8, checked in the source), plus a fallback that charges any off-CPU gap with no observed wakeup to runqueue wait. Counters added (`npreempt`, `preempt_sleeping`, `no_wake_gap` in `tlat.json`). Rerun of the same 18 conditions (`fixval2`, `analysis/fixval2_check.py`): 15,185 kernel preemptions of target threads, **0** with a sleep state set, **0** gaps without a wakeup. The VM kernel runs `preempt=voluntary`, so the case cannot arise between `set_current_state()` and `schedule()`; the campaign data are unaffected. Identity on switched requests in the rerun: worst run 98.8%, median 100%. BPF now builds with `-mcpu=v3` (needed for the 32-bit CAS in `slot_ts()`).
 - **H2:** 7 of 9 uncorrected, 5 of 9 after Holm (verified from `results.json:h2_tests`); now in abstract, results and conclusion (macros `hTwoRaw`, `hTwoHolm`). cpu flood +0.16 µs stated. "and only that component" removed from the intro.
