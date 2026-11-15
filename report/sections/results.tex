@@ -46,7 +46,7 @@ median \thrCpuMid), which is why the threshold is a median of five runs.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.82\textwidth]{figures/fig_latency.pdf}
+\includegraphics[width=0.78\textwidth]{figures/fig_latency.pdf}
 \caption{Latency complementary cumulative distribution functions (CCDFs:
 fraction of requests slower than $x$), pooled over
 5 runs per condition. Solid: untraced; dashed: \sys. Shelves are collapse
@@ -56,7 +56,7 @@ episodes in individual runs.}
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.82\textwidth]{figures/fig_pr.pdf}
+\includegraphics[width=0.78\textwidth]{figures/fig_pr.pdf}
 \caption{Precision--recall curves for tail-request detection. Grey line:
 base rate, the score of a random ranking (the cpu/kv test set includes
 stressed runs).}
@@ -169,7 +169,7 @@ could reveal it.
 
 \begin{figure}[!htb]
 \centering
-\includegraphics[width=0.86\columnwidth]{figures/fig_signature.pdf}
+\includegraphics[width=0.76\columnwidth]{figures/fig_signature.pdf}
 \caption{Intervention signatures: fold change of mean per-request delay
 vs.\ the matching control (* two-sided Mann--Whitney $p<0.05$, unlike the
 one-sided tests in the text; $\cdot$: both $<$50\,ns).}
@@ -198,7 +198,7 @@ of the service time.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.8\columnwidth]{figures/fig_overhead.pdf}
+\includegraphics[width=0.72\columnwidth]{figures/fig_overhead.pdf}
 \caption{Closed-loop throughput loss vs.\ untraced (median of 5 runs; bars:
 bootstrap 95\% CI; dashed: 5\% budget). Tracer CPU per request is given in
 the text.}

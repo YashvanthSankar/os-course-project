@@ -16,6 +16,4 @@ together with the client-side delay in the net workload, show where the
 method stops: OS delay on threads outside the request window, and host
 effects the guest cannot see. Next steps are to follow a request across all
 the threads it touches, to model per-connection queues, and to repeat the
-study on bare metal. Along the way we prepared and tested a patch that lets
-bcc's \texttt{runqlat} separate waits after a wakeup from waits after a
-preemption, the distinction our intervention results depended on.
+study on bare metal.

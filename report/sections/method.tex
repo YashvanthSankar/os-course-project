@@ -153,12 +153,9 @@ I/O $\to$ blocked, moving the workers $\to$ less sched. We then compare the
 per-run mean of that delay with the control using a one-sided Mann--Whitney
 U test.
 
-\textbf{Reproducibility.} Code, scripts and analysis are at
-\url{https://github.com/YashvanthSankar/os-course-project}.
-\texttt{sudo bash scripts/run\_all.sh} rebuilds the tracer, reruns all
-experiments and regenerates every table and figure, and \texttt{sudo make
-test} is a one-minute self-check. We used clang 18.1.3, libbpf 1.3.0,
-bpftool 7.4.0 and Python 3.12 with scikit-learn 1.4.1, pandas 2.1.4 and
-NumPy 1.26.4; the \texttt{runqlat} patch was tested against bcc commit
-\texttt{c398a9a7}. Each run stores its raw data and environment, and the
-data dictionary is in \texttt{docs/REPRODUCE.md}.
+\textbf{Reproducibility.} Code, data access and a step-by-step guide are at
+\url{https://github.com/YashvanthSankar/os-course-project};
+\texttt{sudo bash scripts/run\_all.sh} reruns all experiments and
+regenerates every table and figure. We used clang 18.1.3, libbpf 1.3.0,
+bpftool 7.4.0, Python 3.12, scikit-learn 1.4.1, pandas 2.1.4 and NumPy
+1.26.4.
