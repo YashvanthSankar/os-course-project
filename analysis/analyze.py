@@ -701,7 +701,6 @@ def touched(b):
 
 def stage_e(raw, thr, out, res):
     rows = []
-    sig = {}
     for d in runs(raw, "interv"):
         b, info = load_run(d, thr)
         if "is_tail" not in b:

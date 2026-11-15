@@ -9,8 +9,8 @@ and how to reproduce every number and figure in the report.
 |---|---|
 | `latex_report/` | `main.tex`, `references.bib`, `report.pdf`, `figures/`, and the other LaTeX files (`sections/` with one file per section, `generated/` with the tables and numeric macros produced by the analysis) |
 | `code/` | everything needed to build and run: `src/`, `scripts/`, `analysis/`, `configs/`, `requirements.txt`, `Makefile`, `opensource/` (bcc patch). **Run every command in this guide from inside `code/`.** |
-| `documentation/` | this guide (`reproducibility_guide.md` / `.pdf`) and `background_concepts.md` (every OS/eBPF/statistics concept used, explained from scratch) |
-| `supplementary/` | `datasets/` (one complete sample run + download link and checksum of the full raw data), `experimental_results/` (every CSV/JSON behind the report), `additional_figures/` (all figures as PDF), `other_supporting_materials/` (bcc patch test log, environment of the measured machine, review log) |
+| `documentation/` | this guide (`reproducibility_guide.md` / `.pdf`) |
+| `supplementary/` | `datasets/` (one complete sample run + download link and checksum of the full raw data), `experimental_results/` (every CSV/JSON behind the report), `additional_figures/` (all figures as PDF), `other_supporting_materials/` (bcc patch test log, environment of the measured machine) |
 
 In the GitHub repository the same files sit at the top level (`report/` instead of `latex_report/`).
 
@@ -42,7 +42,7 @@ data/sample/            one complete raw run, gzip-compressed (in the repo)
 results/                tables (csv), results.json, figures (pdf) produced by analyze.py
 report/                 IEEE LaTeX source of the report
 opensource/             patch for upstream bcc (runqlat --split) + test script
-docs/LEARN.md           background on every concept used
+docs/LEARN.md           background on every concept used (GitHub repository only)
 ```
 
 ## 2. How the pieces fit

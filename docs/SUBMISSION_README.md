@@ -54,13 +54,12 @@ Team_<No>_Assignment_A1/
 │   └── opensource/               patch for bcc runqlat (+ build/test script, PR text)
 ├── documentation/
 │   ├── reproducibility_guide.md  full setup, commands, configuration, outputs, metrics
-│   ├── reproducibility_guide.pdf same guide as PDF
-│   └── background_concepts.md    every OS / eBPF / statistics concept used, explained
+│   └── reproducibility_guide.pdf same guide as PDF
 └── supplementary/
     ├── datasets/                 one complete raw run + download link of the full data
     ├── experimental_results/     every CSV/JSON behind the report's numbers
     ├── additional_figures/       all result figures (PDF)
-    └── other_supporting_materials/  bcc patch test log, machine environment, review log
+    └── other_supporting_materials/  bcc patch test log, environment of the measured machine
 ```
 
 ## Quick start (Ubuntu 24.04, root, 4 CPUs)

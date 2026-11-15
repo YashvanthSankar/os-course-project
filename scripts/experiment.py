@@ -205,7 +205,7 @@ def exp_abtest():
 
 
 def exp_fixval():
-    """Validation re-run after the torn-read fix in ksnap_take (TODO 4):
+    """Validation re-run after the torn-read fix in ksnap_take (review fix):
     same conditions as the main/intervention runs, new seeds."""
     plan = [(wl, st, rep) for wl in ("cpu", "kv", "net") for st in ("none", "cpuhog") for rep in range(3)]
     random.Random(19).shuffle(plan)
@@ -224,7 +224,7 @@ def exp_fixval2():
 
 def exp_netfresh():
     """Fresh held-out net runs (seeds never used before) for a test set that
-    was not seen while the features were designed (TODO 1)."""
+    was not seen while the features were designed (review check)."""
     plan = [(load, rep) for load in WORKLOADS["net"]["rates"] for rep in range(3)]
     random.Random(23).shuffle(plan)
     for load, rep in plan:

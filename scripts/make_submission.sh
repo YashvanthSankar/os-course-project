@@ -29,14 +29,12 @@ cp Makefile requirements.txt "$OUT/code/"
 # documentation
 cp docs/REPRODUCE.md "$OUT/documentation/reproducibility_guide.md"
 cp docs/CODE_GUIDE.pdf "$OUT/documentation/reproducibility_guide.pdf"
-cp docs/LEARN.md "$OUT/documentation/background_concepts.md"
 
 # supplementary
 cp -R data/sample/. "$OUT/supplementary/datasets/"
 cp results/*.csv results/*.json "$OUT/supplementary/experimental_results/"
 cp results/fig_*.pdf "$OUT/supplementary/additional_figures/"
 cp results/environment.txt "$OUT/supplementary/other_supporting_materials/measured_machine_environment.txt"
-cp TODO.md "$OUT/supplementary/other_supporting_materials/review_and_fixes_log.md"
 [ -f opensource/bcc_test_log.txt ] && cp opensource/bcc_test_log.txt "$OUT/supplementary/other_supporting_materials/"
 
 # no caches, virtualenvs, build outputs or OS junk

@@ -211,8 +211,6 @@ def main():
     mname = {"own_sched_mean": "sched", "own_irq_mean": "irq", "own_blocked_mean": "blocked"}
     rows = []
     for t in tests:
-        oth = ", ".join(f"{mname[k]} {us(v['interv']):.1f}/{us(v['control']):.1f}"
-                        for k, v in t["other_ratios"].items())
         p = t["p"]
         ps = f"{p:.3f}" if p >= 0.001 else "$<$0.001"
         rows.append(f"{t['workload']} & {nice[t['intervention']]} & {mname[t['metric']]} & "
