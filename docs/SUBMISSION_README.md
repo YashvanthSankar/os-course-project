@@ -32,6 +32,28 @@ We tested two hypotheses over 336 runs of three workloads (cpu, kv, net):
   **7 of 9** predictions hold (**5 of 9** after Holm correction); the misses
   revealed an interrupt path we had not predicted.
 
+## What we built
+
+About 3,800 lines of code, all written for this project:
+
+| Component | Language | Lines | Purpose |
+|---|---|---|---|
+| `code/src/tlat.bpf.c` | C (eBPF) | 445 | kernel programs on 7 scheduler and interrupt tracepoints; per-thread state machine for preemption, wakeup, blocked and IRQ time |
+| `code/src/tlat.c` | C | 328 | loader and collector: four tracing modes, 5 ms system-wide sampling, map pinning |
+| `code/src/tlbench.c` | C | 811 | open-loop benchmark (cpu, kv, net workloads) with stable request ids and trap-free counter reads |
+| `code/src/stressor.c`, `hiccup.c` | C | 274 | controlled interventions (CPU hog, softirq flood, I/O, affinity) and the VM-noise meter |
+| `code/scripts/experiment.py`, `smoke_test.py` | Python | 354 | automated campaign of 336 runs with noise gate and randomized order; one-minute self-test |
+| `code/analysis/` | Python | 1,479 | per-request latency breakdown, inherited delay, detection models, statistical tests, every figure and table |
+| `code/opensource/runqlat-split.patch` | C (eBPF) | 224 | patch for bcc `runqlat` separating wakeup from preemption latency; built and tested |
+
+How the results were checked:
+
+- predictions for every intervention were written down before running it
+- train/test split by whole runs, an unseen workload, rotation of the held-out workload, and a fresh replication with new seeds
+- bootstrap confidence intervals over runs, and Holm correction for multiple tests
+- an accounting identity on every request, which found two real bugs (a torn read and an ignored preempt flag); both were fixed and the affected runs repeated
+- a noise gate that waits for a quiet host before every run
+
 ## Folder structure
 
 ```
