@@ -46,8 +46,9 @@ test: all
 
 package:
 	rm -rf dist && mkdir -p dist
-	cd report && zip -qr ../dist/report_latex.zip main.tex refs.bib sections figures generated
-	zip -qr dist/project_code.zip Makefile README.md src scripts analysis docs opensource results -x '*.pyc' -x '*/__pycache__/*'
+	cd report && zip -qr ../dist/report_latex.zip main.tex refs.bib sections figures generated -x '*.DS_Store'
+	zip -qr dist/project_code.zip Makefile README.md src scripts analysis docs opensource results data/sample \
+		-x '*.pyc' -x '*/__pycache__/*' -x '*.DS_Store'
 	cp report/main.pdf dist/TailTag_report.pdf
 	cp docs/CODE_GUIDE.pdf dist/CODE_GUIDE.pdf
 	@echo "dist/: report_latex.zip, project_code.zip, TailTag_report.pdf, CODE_GUIDE.pdf"
