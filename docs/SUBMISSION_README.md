@@ -110,7 +110,14 @@ It also compiles unchanged on Overleaf (pdfLaTeX) and with Tectonic.
 
 ## Data
 
-`supplementary/datasets/` contains one complete raw run and its data
-dictionary. The full raw data of all 336 runs (about 20 GB, 4.4 GB
-compressed) is linked from `supplementary/datasets/README.md` together
-with its SHA-256 checksum.
+All data comes from our own experiments (336 runs, about 20 GB raw, 4.4 GB
+compressed), so it is too large for this archive.
+`supplementary/datasets/README.md` explains the four ways to get it:
+
+1. one complete raw run is included, to inspect the format;
+2. every derived result behind the report is included in
+   `supplementary/experimental_results/`;
+3. the full dataset can be regenerated with `sudo bash scripts/run_all.sh`
+   (fixed seeds and configuration, about 3.5 hours);
+4. the compressed archive is available from the team on request, with a
+   SHA-256 checksum to verify it.
