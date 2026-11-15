@@ -3,8 +3,7 @@
 
 We ran 336 runs: 45 calibration, 90 main, 62 overhead, 70 intervention,
 16 A/B, 8 receiver-placement, and 45 validation runs (36 repeats after two
-fixes, 9 fresh net). The noise gate waits for a quiet host instead of discarding
-runs; of the first 318 runs, \nwWaited{} had to wait (median
+fixes, 9 fresh net). The noise gate waits for a quiet host; of the first 318 runs, \nwWaited{} had to wait (median
 \nwMed\,s, longest \nwMax\,min). Median platform noise was \noiseMed\% of
 vCPU time.
 
@@ -36,9 +35,8 @@ steadier: the share of tail latency given to each component varies across
 the five runs of a condition by a median of \stabMed{} percentage points (at
 most \stabMax, unstressed kv).
 
-\textbf{Collapse episodes.} Some runs, traced or not, contain episodes of a
-few hundred milliseconds in which the queue grows to tens of milliseconds
-(shelves in Fig.~\ref{fig:latency}). In the worst kv run, the
+\textbf{Collapse episodes.} Some runs, traced or not, contain episodes of a few hundred ms in which
+the queue grows to tens of ms (shelves in Fig.~\ref{fig:latency}). In the worst kv run, the
 service time doubled for 600\,ms with no scheduler, interrupt or blocking
 events at all, which fits the host slowing down the vCPU. The first
 calibration run of every condition, which always ran first, had an inflated
@@ -178,27 +176,26 @@ one-sided tests in the text; $\cdot$: both $<$50\,ns).}
 
 \subsection{Overhead}
 \label{sec:overhead}
-In closed loop, throughput varied by up to $\pm$17\% between identical
-untraced runs, and the untraced kv runs were the slowest of all, so the kv
-bars in Fig.~\ref{fig:overhead} show traced runs up to 33\% faster: closed-loop
-throughput is too noisy to measure the overhead. A steadier measure is the tracer's CPU time per request. Shared
-counters cost \ovNsCpuShm{}\,ns (cpu) and \ovNsKvShm{}\,ns (kv), about as
-much as the counters-only mode, which keeps just the system-wide counters.
-Uprobe windows cost
-\ovNsKvAttrib--\ovNsCpuAttrib{}\,ns even before the traps themselves, and
-per-event streaming up to \ovNsCpuStream{}\,ns: 47--53$\times$ and
-63--104$\times$ the cost of shared counters. The BPF maps take
-\memCnt\,MB (\memRb\,MB with the ring buffer), and no events were dropped.
-In open loop, an interleaved A/B test (\abRuns{} untraced and \abRuns{}
-traced runs, kv mid) was inconclusive: median p99 \abPninetyNone{} vs.\
-\abPninetyShm{} ($p{=}\abPninetyP$), and \abCollNone{} vs.\ \abCollShm{}
-runs with a collapse episode (Fisher $p{=}\abCollP$), both on the traced
-side. In the main runs, traced median p99 was lower than untraced for cpu
+Closed-loop throughput varied by up to $\pm$17\% between identical
+untraced runs, and the untraced kv runs were the slowest of all, so traced
+kv runs look up to 33\% faster in Fig.~\ref{fig:overhead}: throughput is
+too noisy to measure the overhead. Tracer CPU time per request is steadier.
+Shared counters cost \ovNsCpuShm{}\,ns (cpu) and \ovNsKvShm{}\,ns (kv), close
+to the counters-only mode that keeps only system-wide counters
+(\ovNsCpuCount, \ovNsKvCount\,ns). Uprobe windows cost
+\ovNsKvAttrib--\ovNsCpuAttrib{}\,ns before the trap cost, and per-event
+streaming up to \ovNsCpuStream{}\,ns: 47--53$\times$ and 63--104$\times$ the
+cost of shared counters. Maps take \memCnt\,MB (\memRb\,MB with the ring
+buffer); no events were dropped. In open loop, an interleaved A/B test
+(\abRuns{} runs per side, kv mid) was inconclusive: median p99
+\abPninetyNone{} vs.\ \abPninetyShm{} ($p{=}\abPninetyP$), and \abCollNone{}
+vs.\ \abCollShm{} runs with a collapse episode (Fisher $p{=}\abCollP$), both
+traced. In the main runs, traced median p99 was lower than untraced for cpu
 and similar for net, but higher for kv (kv-mid 36.5\,ms vs.\ 120\,$\mu$s),
 where more traced runs had collapse episodes; with a per-run spread of
-0.4--314\,ms we cannot separate tracing from host noise there.
-The firmer evidence for the 5\% budget is the cost per request: about
-0.2\% (cpu) and 0.5\% (kv) of the service time.
+0.4--314\,ms we cannot separate tracing from host noise there. The firmer
+evidence for the 5\% budget is the cost per request: about 0.2\% (cpu) and
+0.5\% (kv) of the service time.
 
 \begin{figure}[t]
 \centering

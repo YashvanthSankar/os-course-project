@@ -46,7 +46,7 @@ outcome we reached:
 \item \textbf{Build a low-overhead tracer.} \sys{} is an eBPF tool that keeps per-thread counters of preemption
 wait, wakeup delay, blocked time and interrupt time (charged to the thread
 that was interrupted) in a BPF map that user space can map into memory
-(\S\ref{sec:related}). The application copies its own counters at the start and end of each request
+(\S\ref{sec:matching}). The application copies its own counters at the start and end of each request
 with plain memory loads, with no system call or trap. This costs
 \ovNsKvShm--\ovNsCpuShm{}\,ns of tracer CPU per request, 47--53$\times$ less
 than uprobes (\S\ref{sec:overhead}).

@@ -42,7 +42,7 @@ On Ubuntu 24.04 with root (see the reproducibility guide for setup):
 cd code
 bash scripts/setup_vm.sh && make
 sudo make test                              # 1-minute check first
-sudo bash scripts/run_all.sh                # all 336 runs + analysis, about 3.5 hours, about 20 GB
+sudo NOISE_LIMIT=5 bash scripts/run_all.sh  # all 336 runs + analysis, about 3.5 hours, about 20 GB
 ```
 
 Single experiment sets can also be generated on their own, for example

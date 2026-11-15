@@ -25,8 +25,7 @@ lateness is logged separately.
 \textbf{Noise gate.} In a VM, the host can pause a virtual CPU without the
 guest noticing. A small meter, \texttt{hiccup}, spins one thread per vCPU
 and records gaps in its own execution. A run starts only when every vCPU
-loses less than 5\% of its time (3\% for the first eight runs), and the
-readings before and after each run are stored with it.
+loses less than 5\% of its time (3\% for the first eight runs).
 
 \subsection{Kernel telemetry}
 \label{sec:telemetry}
@@ -49,6 +48,7 @@ information (PSI). These samples are the \emph{aggregate event-count}
 baseline.
 
 \subsection{Matching requests to kernel data}
+\label{sec:matching}
 Fig.~\ref{fig:arch} shows how the pieces fit together. We compare three ways to find the kernel data that belongs to one request.
 \textbf{Uprobe windows} place uprobes on two empty functions,
 \texttt{tl\_req\_begin} and \texttt{tl\_req\_end}. The first takes a
@@ -111,9 +111,14 @@ service, plus preemption and wakeup waits during service), \emph{irq},
 (time waiting for a free worker). A request can also be late because of an
 OS event it never saw: if the request in front of it was preempted, it
 waits longer in the queue. We call this \emph{inherited} delay. For request
-$i$ it is the sum of the large OS delays (over 10\,$\mu$s, so that many tiny
-delays cannot stand in for queue length) of all requests that finished
-while $i$ was waiting, divided by the number of workers. The queue time is
+$i$ and delay type $k \in \{\mathit{sched}, \mathit{irq}, \mathit{blocked}\}$,
+\begin{equation}
+I_{i,k} = \frac{1}{W} \sum_{j \in C_i} \max\left(0,\; d_{j,k} - 10\,\mu\mathrm{s}\right),
+\label{eq:inherited}
+\end{equation}
+where $C_i$ holds the requests that finished while $i$ waited, $d_{j,k}$ is
+their own delay of type $k$, and $W{=}3$ workers; the 10\,$\mu$s floor keeps
+many tiny delays from standing in for queue length. The queue time is
 then split into inherited sched, irq and blocked parts (capped at the wait)
 and a remaining \emph{load} part. A slow request is attributed to the
 component that most exceeds the median of the normal requests in the same

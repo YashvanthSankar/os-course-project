@@ -16,6 +16,12 @@ In the GitHub repository the same files sit at the top level (`report/` instead 
 
 ## 1. Repository layout
 
+This is the layout of the GitHub repository. In the submission ZIP the same
+files are split as described in section 0: `src/`, `scripts/`, `analysis/`
+and `configs/` are under `code/`, `report/` is `latex_report/`, `results/`
+is `supplementary/experimental_results/` and `data/sample/` is
+`supplementary/datasets/`.
+
 ```
 src/
   tlbench.c             open-loop request benchmark (cpu | kv | net workloads)
@@ -164,7 +170,7 @@ python3 analysis/analyze.py --raw data/raw --out results     # ~30 min, needs ~7
 python3 analysis/no_os_delay.py --raw data/raw --res results
 python3 analysis/robustness_checks.py --raw data/raw --res results   # identity subset, floors, rotation, fresh net
 python3 analysis/preempt_fix_check.py --raw data/raw --res results   # fixval vs fixval2 (preempt-flag fix)
-python3 analysis/make_tables.py --res results --out report/generated
+python3 analysis/make_tables.py --res results --out report/generated   # in the ZIP: --out ../latex_report/generated
 ```
 
 Runs that already finished are skipped, so an interrupted campaign resumes

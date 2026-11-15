@@ -8,7 +8,5 @@ stated. Within a known workload, queueing explains most slow requests, and
 any load signal finds them; per-request kernel data helped on one unseen
 workload but not on others or on fresh runs, so its value lies in naming
 the cause of a slow request. Controlled stressors moved the predicted delay
-in \hTwoRaw{} of \hTwoN{} cases (\hTwoHolm{} after correction). The method
-stops at OS delay outside the request window and at host effects the guest
-cannot see. Next steps are to follow a request across all its threads, to
+in \hTwoRaw{} of \hTwoN{} cases (\hTwoHolm{} after correction). Next steps are to follow a request across all its threads, to
 model per-connection queues, and to repeat the study on bare metal.

@@ -1,4 +1,4 @@
-# Build everything into build/. Run inside the Linux VM (see docs/REPRODUCE.md).
+# Build everything into build/. Run inside the Linux VM (see the reproducibility guide).
 CC      ?= gcc
 CLANG   ?= clang
 BPFTOOL ?= bpftool

@@ -34,7 +34,7 @@ We tested two hypotheses over 336 runs of three workloads (cpu, kv, net):
 
 ## What we built
 
-About 3,800 lines of code, all written for this project:
+About 3,800 lines of code (non-blank lines), all written for this project:
 
 | Component | Language | Lines | Purpose |
 |---|---|---|---|
@@ -72,7 +72,7 @@ Team_01_Assignment_A1/
 │   ├── analysis/                 analysis pipeline (Python): tables, figures, statistics
 │   ├── configs/workloads.json    workload parameters and load levels
 │   ├── requirements.txt          Python dependencies (pinned)
-│   ├── Makefile                  build, `make test`, `make package`
+│   ├── Makefile                  build and `make test`
 │   └── opensource/               patch for bcc runqlat (+ build/test script, PR text)
 ├── documentation/
 │   ├── reproducibility_guide.md  full setup, commands, configuration, outputs, metrics
@@ -91,7 +91,7 @@ cd code
 bash scripts/setup_vm.sh          # install toolchain (apt)
 make                              # build tracer, benchmark, stressor, noise meter
 sudo make test                    # 1-minute self-check, ends with ALL CHECKS PASSED
-sudo bash scripts/run_all.sh      # full reproduction: all experiments + analysis (~3.5 h)
+sudo NOISE_LIMIT=5 bash scripts/run_all.sh   # full reproduction: all experiments + analysis (~3.5 h)
 ```
 
 `run_all.sh` regenerates `code/results/` and the report's tables, numbers
@@ -117,7 +117,7 @@ compressed), so it is too large for this archive.
 1. one complete raw run is included, to inspect the format;
 2. every derived result behind the report is included in
    `supplementary/experimental_results/`;
-3. the full dataset can be regenerated with `sudo bash scripts/run_all.sh`
+3. the full dataset can be regenerated with `sudo NOISE_LIMIT=5 bash scripts/run_all.sh`
    (fixed seeds and configuration, about 3.5 hours);
 4. the full compressed archive (`tailtag_raw_data.tar.zst`, 4.4 GB) is on
    Google Drive, with a SHA-256 checksum to verify it:
