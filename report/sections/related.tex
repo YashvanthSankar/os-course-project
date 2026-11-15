@@ -41,7 +41,10 @@ interface~\cite{kernelbpf}: \texttt{runqlat} shows runqueue wait as a
 histogram per CPU, process or cgroup, and other tools cover softirq and
 off-CPU time. They sum over time, a task or a container, so their output
 cannot be matched to the latency of one request, and \texttt{runqlat} mixes
-waits after a wakeup with waits after a preemption.
+waits after a wakeup with waits after a preemption. Closest to us,
+Rezvani et al.~\cite{rezvani2024ispass} use eBPF system-call tracing to
+\emph{reconstruct} request-level metrics such as tail latency; we instead
+\emph{explain} each slow request by the scheduler and interrupt delay behind it.
 ghOSt~\cite{humphries2021ghost} moves Linux scheduling decisions to user
 space, and its BPF version shares a per-task status table with user space
 through a memory-mapped BPF array~\cite{rhoden2022ghostbpf}. We reuse that
@@ -51,9 +54,8 @@ everything but cost far more: our own per-event streaming mode uses
 63--104$\times$ more tracer CPU per request than in-kernel counting
 (\S\ref{sec:overhead}).
 
-\textbf{Gaps.} We found no low-overhead way, on an unmodified Linux kernel,
-to tag each request with the scheduler and interrupt delay that it and the
-requests queued ahead of it suffered, to compare that tag with system-wide
-event counts and a queue-length baseline, to test it on an unseen workload,
-and to check it with controlled one-at-a-time stressors. This paper
-addresses that gap.
+\textbf{Gaps.} We found no low-overhead way, on an unmodified kernel, to
+tag each request with the scheduler and interrupt delay that it and the
+requests ahead of it suffered, compare that tag with system-wide counts and
+a queue-length baseline, test it on an unseen workload, and check it with
+one-at-a-time stressors. This paper addresses that gap.
