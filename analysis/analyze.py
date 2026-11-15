@@ -328,12 +328,11 @@ def stage_b(raw, out, res):
         hi = [100 * (s.loc[m, "loss_hi"] - s.loc[m, "loss_med"]) if m in s.index else 0 for m in modes]
         x = np.arange(len(modes)) + (i - 0.5) * w
         ax.bar(x, ys, w, yerr=[lo, hi], capsize=2, color=COL[wl], label=wl, alpha=0.85)
-    ax.axhline(5, color="k", ls=":", lw=0.8)
-    ax.text(len(modes) - 0.55, 5.4, "5% budget", fontsize=6, ha="right")
+    ax.axhline(5, color="k", ls=":", lw=0.8, label="5% budget")
     ax.set_xticks(range(len(modes)))
     ax.set_xticklabels(["counters\nonly", "shared\ncounters", "uprobe\nwindows", "per-event\nstream"])
     ax.set_ylabel("throughput loss (%)")
-    ax.legend(frameon=False)
+    ax.legend(frameon=False, loc="upper left", ncol=3, fontsize=6)
     ax.grid(axis="y", alpha=0.3, lw=0.3)
     fig.tight_layout(pad=0.3)
     fig.savefig(out / "fig_overhead.pdf")
@@ -653,7 +652,8 @@ def stage_d(frames, out, res):
     x = np.arange(len(names))
     for i, sname in enumerate(sets):
         ys = [ab[(ab.ablation == n) & (ab.set == sname)].ap.iloc[0] for n in names]
-        ax.bar(x + (i - 0.5) * 0.4, ys, 0.4, label=sname.split(",")[0].replace(" workload", ""),
+        short = {"test (cpu+kv, unseen runs)": "test (cpu+kv)", "held-out workload (net)": "held-out (net)"}
+        ax.bar(x + (i - 0.5) * 0.4, ys, 0.4, label=short.get(sname, sname),
                color=["#4c72b0", "#55a868"][i])
     ax.set_xticks(x)
     ax.set_xticklabels(names, rotation=35, ha="right")

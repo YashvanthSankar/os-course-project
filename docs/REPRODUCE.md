@@ -104,13 +104,13 @@ Kernel requirements: `CONFIG_DEBUG_INFO_BTF=y` (for `vmlinux.h` / CO-RE and
 ## 4. Setting up the VM (on macOS)
 
 ```bash
-limactl create --name=ebpf --cpus=4 --memory=6 --disk=30 --vm-type=vz \
+limactl create --name=ebpf --cpus=4 --memory=12 --disk=40 --vm-type=vz \
   --set '.containerd.system=false | .containerd.user=false' template://ubuntu-24.04
 limactl start ebpf
 limactl shell ebpf
 # inside the VM:
-rsync -a /Users/<you>/Study/OS/project/ ~/work/project/   # home is mounted read-only
-cd ~/work/project && bash scripts/setup_vm.sh && make
+mkdir -p ~/work && cp -r /Users/<you>/Team_01_Assignment_A1 ~/work/   # home is mounted read-only
+cd ~/work/Team_01_Assignment_A1/code && bash scripts/setup_vm.sh && make
 ```
 
 Any Ubuntu 24.04 machine (bare metal is better) works the same way:
@@ -121,8 +121,9 @@ Any Ubuntu 24.04 machine (bare metal is better) works the same way:
 **Keep the host idle.** In a VM, other host load shows up as multi-millisecond
 gaps that the guest kernel cannot see. The driver has a *noise gate*: before
 every run, `hiccup` measures how much time a spinning thread per vCPU loses.
-If that exceeds `NOISE_LIMIT` (default 3%; the reported campaign used 5%
-after the first eight runs), the run waits. The measurement
+If that exceeds `NOISE_LIMIT`, the run waits. The default is 3%; the
+reported campaign used 5% after the first eight runs, so set
+`NOISE_LIMIT=5` to match it (`sudo NOISE_LIMIT=5 bash scripts/run_all.sh`). The measurement
 before and after each run is stored in its `cond.json`.
 
 **Quick self-check first (about 1 minute):** `sudo make test` runs four
@@ -137,9 +138,15 @@ One command (about 3 hours of experiments plus ~30 minutes of analysis
 on a quiet machine; 336 runs, ~20 GB of raw data):
 
 ```bash
-cd ~/work/project
-sudo bash scripts/run_all.sh          # build, all experiments, analysis
+cd ~/work/Team_01_Assignment_A1/code   # in the GitHub repository: the repository root
+sudo NOISE_LIMIT=5 bash scripts/run_all.sh   # build, all experiments, analysis
 ```
+
+`run_all.sh` writes results to `code/results/` and the report's tables and
+figures to `../latex_report/generated/` and `../latex_report/figures/`.
+Note that `fixval` reruns the 18 validation runs with the current code,
+which already contains the torn-read fix, so its numbers match the
+"after fix" results.
 
 Or step by step:
 

@@ -37,6 +37,16 @@ cp results/fig_*.pdf "$OUT/supplementary/additional_figures/"
 cp results/environment.txt "$OUT/supplementary/other_supporting_materials/measured_machine_environment.txt"
 [ -f opensource/bcc_test_log.txt ] && cp opensource/bcc_test_log.txt "$OUT/supplementary/other_supporting_materials/"
 
+# the repository-only `make package` target does not apply inside the ZIP
+python3 - "$OUT/code/Makefile" <<'PY'
+import re, sys
+p = sys.argv[1]; s = open(p).read()
+s = re.sub(r"\n\.PHONY: package\npackage:.*?(?=\n\S|\Z)", "", s, flags=re.S)
+s = re.sub(r"\npackage:.*?(?=\n\S|\Z)", "", s, flags=re.S)
+s = s.replace("\n.PHONY: package", "")
+open(p, "w").write(s)
+PY
+
 # team-internal helpers and duplicates are not part of the submission
 rm -f "$OUT/code/scripts/measure_pages.py" "$OUT/code/scripts/make_submission.sh" "$OUT/code/opensource/bcc_test_log.txt"
 

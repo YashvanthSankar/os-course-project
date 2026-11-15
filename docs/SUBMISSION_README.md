@@ -57,7 +57,7 @@ How the results were checked:
 ## Folder structure
 
 ```
-Team_<No>_Assignment_A1/
+Team_01_Assignment_A1/
 ├── README.md                     this file
 ├── latex_report/
 │   ├── main.tex                  IEEE conference template (IEEEtran)

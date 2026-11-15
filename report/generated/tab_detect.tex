@@ -1,4 +1,4 @@
-\begin{table}[t]\centering\caption{Tail-request detection: PR-AUC [run-bootstrap 95\% CI] and F1 at the F1-optimal training threshold. Train: cpu/kv reps 0--2; test: reps 3--4; net never seen. LR logistic regression, RF random forest; rules: total OS delay $>\tau$ (aligned), PSI CPU $>\tau$ (aggregate). Base rate (= PR-AUC of a random ranking): test \baseApTest, net \baseApHeld.}\label{tab:detect}\scriptsize\setlength{\tabcolsep}{2.5pt}
+\begin{table}[t]\centering\caption{Tail-request detection: PR-AUC [run-bootstrap 95\% CI] and F1 at the F1-optimal training threshold. Train: cpu/kv reps 0--2; test: reps 3--4; net never seen. LR logistic regression, RF random forest; aggregate = counts over 20\,ms windows; rules: total OS delay $>\tau$ (aligned), PSI CPU $>\tau$ (aggregate). Base rate (= PR-AUC of a random ranking): test \baseApTest, net \baseApHeld.}\label{tab:detect}\scriptsize\setlength{\tabcolsep}{2.5pt}
 \begin{tabular}{llrrrr}\toprule
 & & \multicolumn{2}{c}{test (cpu/kv)} & \multicolumn{2}{c}{held-out (net)}\\
 features & model & PR-AUC & F1 & PR-AUC & F1\\\midrule

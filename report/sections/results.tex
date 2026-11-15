@@ -2,8 +2,8 @@
 \label{sec:results}
 
 We ran 336 runs: 45 calibration, 90 main, 62 overhead, 70 intervention,
-16 A/B, 8 receiver-placement, and 45 added after review (36 validation,
-9 fresh net). The noise gate waits for a quiet host instead of discarding
+16 A/B, 8 receiver-placement, and 45 validation runs (36 repeats after two
+fixes, 9 fresh net). The noise gate waits for a quiet host instead of discarding
 runs; of the first 318 runs, \nwWaited{} had to wait (median
 \nwMed\,s, longest \nwMax\,min). Median platform noise was \noiseMed\% of
 vCPU time.
@@ -19,8 +19,8 @@ For those, the identity held for \idCampSwMed\% of requests in the median
 run but only \idCampSwMin\% in the worst. Part of that gap was a bug: the
 application read the on-CPU timestamp and total as two separate loads, so a
 switch between them was counted twice. With a retry, 18 validation runs
-reached at least \idFixOneSwMin\%. A reviewer also found that our
-switch-out test ignored the kernel's \texttt{preempt} flag. After the fix,
+reached at least \idFixOneSwMin\%. We also found that our switch-out test
+ignored the kernel's \texttt{preempt} flag. After the fix,
 a rerun saw none of \preAll{} preemptions hit a thread that was about to
 sleep (this kernel preempts only at safe points), so the earlier data are
 unaffected. The generator was less than 60\,$\mu$s late at p99 in \genOk{}
@@ -40,13 +40,14 @@ most \stabMax, unstressed kv).
 few hundred milliseconds in which the queue grows to tens of milliseconds
 (shelves in Fig.~\ref{fig:latency}). In the worst kv run, the
 service time doubled for 600\,ms with no scheduler, interrupt or blocking
-events at all, which fits the host slowing down the vCPU. One such episode
-raised a single calibration run's p99 to \thrMaxCpuMid{} (cpu-mid; five-run
-median \thrCpuMid), which is why the threshold is a median of five runs.
+events at all, which fits the host slowing down the vCPU. The first
+calibration run of every condition, which always ran first, had an inflated
+p99 (up to 41\,ms; cpu-mid \thrMaxCpuMid{} against a five-run median of
+\thrCpuMid), which is why the threshold is a median of five runs.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.78\textwidth]{figures/fig_latency.pdf}
+\includegraphics[width=0.74\textwidth]{figures/fig_latency.pdf}
 \caption{Latency complementary cumulative distribution functions (CCDFs:
 fraction of requests slower than $x$), pooled over
 5 runs per condition. Solid: untraced; dashed: \sys. Shelves are collapse
@@ -56,7 +57,7 @@ episodes in individual runs.}
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.78\textwidth]{figures/fig_pr.pdf}
+\includegraphics[width=0.74\textwidth]{figures/fig_pr.pdf}
 \caption{Precision--recall curves for tail-request detection. Grey line:
 base rate, the score of a random ranking (the cpu/kv test set includes
 stressed runs).}
@@ -111,14 +112,12 @@ blocking features add little on their own.
 
 \input{generated/tab_detect}
 
-\textbf{Why net is hard.} Net tails arise on the client. Most of their
-latency is on the response path ($t_\mathrm{done}-t_\mathrm{end}$), because
-the client's receive thread shares CPU~3 with the spinning generator.
-Moving the receiver to CPU~2 cut the response-path p99 from \rcvGenRespP{}
-to \rcvOwnRespP, but total p99 stayed the same (\rcvGenP{} vs.\ \rcvOwnP)
-because the server-side p99 rose to \rcvOwnServer: the receiver now
-competes with a worker. The delay follows the co-located thread,
-outside the request window.
+\textbf{Why net is hard.} Net tails arise on the client: the response path
+($t_\mathrm{done}-t_\mathrm{end}$) dominates because the receive thread
+shares CPU~3 with the spinning generator. Moving it to CPU~2 cut the
+response-path p99 from \rcvGenRespP{} to \rcvOwnRespP, but total p99 stayed
+at \rcvOwnP{} as the server side rose to \rcvOwnServer: the delay follows
+the co-located thread, outside the request window.
 
 \begin{figure}[t]
 \centering
@@ -128,9 +127,10 @@ delay, and changing the window of the aggregate baseline.}
 \label{fig:ablation}
 \end{figure}
 
-\textbf{Early warning.} The kernel data of one 10\,ms window predicts
-whether a tail episode starts in the next window with PR-AUC \ewApTest{}
-(test) and \ewApHeld{} (net). This beats assuming the next window looks
+\textbf{Early warning.} We call a 10\,ms window a tail episode if more
+than 5\% of its requests exceed the tail threshold. A logistic regression on
+the counters of one window predicts whether the next window is an episode
+with PR-AUC \ewApTest{} (test) and \ewApHeld{} (net). This beats assuming the next window looks
 like the current one (\ewPersTest, \ewPersHeld) and the base rate, the
 fraction of windows followed by an episode (\ewBasePctTest\%,
 \ewBasePctHeld\%).
@@ -167,9 +167,9 @@ interrupts land on the worker CPUs. Our prediction (blocked time) missed
 this cause, and only charging interrupt time to the interrupted thread
 could reveal it.
 
-\begin{figure}[!htb]
+\begin{figure}[tb]
 \centering
-\includegraphics[width=0.76\columnwidth]{figures/fig_signature.pdf}
+\includegraphics[width=0.7\columnwidth]{figures/fig_signature.pdf}
 \caption{Intervention signatures: fold change of mean per-request delay
 vs.\ the matching control (* two-sided Mann--Whitney $p<0.05$, unlike the
 one-sided tests in the text; $\cdot$: both $<$50\,ns).}
@@ -179,26 +179,30 @@ one-sided tests in the text; $\cdot$: both $<$50\,ns).}
 \subsection{Overhead}
 \label{sec:overhead}
 In closed loop, throughput varied by up to $\pm$17\% between identical
-untraced runs, so the differences in Fig.~\ref{fig:overhead} are within
-noise. A steadier measure is the tracer's CPU time per request. Shared
+untraced runs, and the untraced kv runs were the slowest of all, so the kv
+bars in Fig.~\ref{fig:overhead} show traced runs up to 33\% faster: closed-loop
+throughput is too noisy to measure the overhead. A steadier measure is the tracer's CPU time per request. Shared
 counters cost \ovNsCpuShm{}\,ns (cpu) and \ovNsKvShm{}\,ns (kv), about as
-much as counting events only. Uprobe windows cost
+much as the counters-only mode, which keeps just the system-wide counters.
+Uprobe windows cost
 \ovNsKvAttrib--\ovNsCpuAttrib{}\,ns even before the traps themselves, and
 per-event streaming up to \ovNsCpuStream{}\,ns: 47--53$\times$ and
 63--104$\times$ the cost of shared counters. The BPF maps take
 \memCnt\,MB (\memRb\,MB with the ring buffer), and no events were dropped.
 In open loop, an interleaved A/B test (\abRuns{} untraced and \abRuns{}
-traced runs, kv mid) was inconclusive: median p50 \abPfiftyNone{} vs.\
-\abPfiftyShm{}\,$\mu$s ($p{=}\abPfiftyP$), median p99 \abPninetyNone{} vs.\
+traced runs, kv mid) was inconclusive: median p99 \abPninetyNone{} vs.\
 \abPninetyShm{} ($p{=}\abPninetyP$), and \abCollNone{} vs.\ \abCollShm{}
 runs with a collapse episode (Fisher $p{=}\abCollP$), both on the traced
-side. Eight runs per side rule out only large effects. The firmer evidence
-for the 5\% budget is the cost per request: about 0.2\% (cpu) and 0.5\% (kv)
-of the service time.
+side. In the main runs, traced median p99 was lower than untraced for cpu
+and similar for net, but higher for kv (kv-mid 36.5\,ms vs.\ 120\,$\mu$s),
+where more traced runs had collapse episodes; with a per-run spread of
+0.4--314\,ms we cannot separate tracing from host noise there.
+The firmer evidence for the 5\% budget is the cost per request: about
+0.2\% (cpu) and 0.5\% (kv) of the service time.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.72\columnwidth]{figures/fig_overhead.pdf}
+\includegraphics[width=0.62\columnwidth]{figures/fig_overhead.pdf}
 \caption{Closed-loop throughput loss vs.\ untraced (median of 5 runs; bars:
 bootstrap 95\% CI; dashed: 5\% budget). Tracer CPU per request is given in
 the text.}
@@ -215,6 +219,7 @@ noise gate limits this, but it remains the likely cause of the collapse
 episodes we cannot explain. The workloads are synthetic. The
 inherited-delay rule assumes one shared FIFO queue and does not model
 per-connection queues (net). Hard interrupts nested inside a softirq are
-counted twice, and on loopback a net thread's own receive processing counts
-as interrupt time. Shared counters need two calls in the application;
-unmodified programs must use uprobe windows.
+counted twice. The flood and I/O stressors share CPU~3 with the load
+generator, so part of their latency effect may come from late arrivals.
+On loopback a net thread's own receive processing counts
+as interrupt time.

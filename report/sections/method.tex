@@ -34,11 +34,11 @@ readings before and after each run are stored with it.
 \texttt{sched\_wakeup[\_new]}, \texttt{sched\_migrate\_task},
 \texttt{softirq\_entry/exit} and \texttt{irq\_handler\_entry/exit}. For each
 thread of the traced process, a small state machine adds up five kinds of
-time: (i)~\emph{preemption wait}, from being switched out while still
+time: (i)~\emph{preemption wait} ($t_\mathrm{runq}$), from being switched out while still
 runnable (the kernel's \texttt{preempt} flag is set or the state is
-\texttt{TASK\_RUNNING}) until running again; (ii)~\emph{wakeup delay}, from
-\texttt{sched\_wakeup} until running; (iii)~\emph{blocked time}, from going
-to sleep until the wakeup; (iv)~time on the CPU; and (v)~hard and soft IRQ
+\texttt{TASK\_RUNNING}) until running again; (ii)~\emph{wakeup delay} ($t_\mathrm{wake}$), from
+\texttt{sched\_wakeup} until running; (iii)~\emph{blocked time} ($t_\mathrm{blocked}$), from going
+to sleep until the wakeup; (iv)~time on the CPU ($t_\mathrm{oncpu}$); and (v)~hard and soft IRQ
 time (interrupt requests, IRQs), charged to the thread that was \emph{interrupted}. It also counts
 voluntary and involuntary switches, migrations and interrupts. A wakeup for
 a thread that is already running or queued is ignored. The same
@@ -131,7 +131,8 @@ random forest (150 trees, depth 10), each on three feature sets: the
 per-request (\emph{aligned}) features, aggregate counts over 5, 20 or
 100\,ms, and a \emph{queue-length control} (the number of requests that
 finished during the wait). Models are trained on whole cpu and kv runs
-(repetitions 0--2) and tested on unseen repetitions (3--4) and on the
+from the main and intervention sets (repetitions 0--2, so stressed runs are
+included) and tested on unseen repetitions (3--4) and on the
 \textbf{net} workload, which is never used for training or feature design.
 Slow requests are rare, so accuracy would be misleading. We report PR-AUC,
 the area under the precision--recall curve (a random ranking scores the
@@ -153,9 +154,8 @@ I/O $\to$ blocked, moving the workers $\to$ less sched. We then compare the
 per-run mean of that delay with the control using a one-sided Mann--Whitney
 U test.
 
-\textbf{Reproducibility.} Code, data access and a step-by-step guide are at
+\textbf{Reproducibility.} Code, data access and a step-by-step guide with
+all tool versions are at
 \url{https://github.com/YashvanthSankar/os-course-project};
 \texttt{sudo bash scripts/run\_all.sh} reruns all experiments and
-regenerates every table and figure. We used clang 18.1.3, libbpf 1.3.0,
-bpftool 7.4.0, Python 3.12, scikit-learn 1.4.1, pandas 2.1.4 and NumPy
-1.26.4.
+regenerates every table and figure.

@@ -1,19 +1,14 @@
 \section{Conclusion}
 \label{sec:conclusion}
 \sys{} shows that tagging each request with the OS delay it suffered does
-not need a kernel trap per request. Per-thread counters kept by tracepoint
-programs and read through a shared BPF map cost about as much as plain
-event counters, and the measured parts add up to the request's service
-time. The evaluation did not confirm our main hypothesis as stated. Within
-a known workload, queueing explains most slow requests, and any signal that
-follows the load, including system-wide counts, finds them. Per-request
-kernel data did better on one unseen workload, but not when we held out a
-different workload or repeated the runs with new seeds, so its value lies
-in naming the cause of a slow request rather than in detecting it.
-Controlled stressors moved the predicted delay in \hTwoRaw{} of \hTwoN{}
-cases (\hTwoHolm{} after correcting for multiple tests). The misses,
-together with the client-side delay in the net workload, show where the
-method stops: OS delay on threads outside the request window, and host
-effects the guest cannot see. Next steps are to follow a request across all
-the threads it touches, to model per-connection queues, and to repeat the
-study on bare metal.
+not need a kernel trap per request: per-thread counters read through a
+shared BPF map cost about as much as plain event counters, and the measured
+parts add up to the service time. Our main hypothesis did not hold as
+stated. Within a known workload, queueing explains most slow requests, and
+any load signal finds them; per-request kernel data helped on one unseen
+workload but not on others or on fresh runs, so its value lies in naming
+the cause of a slow request. Controlled stressors moved the predicted delay
+in \hTwoRaw{} of \hTwoN{} cases (\hTwoHolm{} after correction). The method
+stops at OS delay outside the request window and at host effects the guest
+cannot see. Next steps are to follow a request across all its threads, to
+model per-connection queues, and to repeat the study on bare metal.
