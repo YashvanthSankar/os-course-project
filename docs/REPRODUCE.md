@@ -3,6 +3,17 @@
 This document covers what each part of the code does, what it depends on,
 and how to reproduce every number and figure in the report.
 
+## 0. Where things are in the submission ZIP
+
+| Folder | Contents |
+|---|---|
+| `latex_report/` | `main.tex`, `references.bib`, `report.pdf`, `figures/`, and the other LaTeX files (`sections/` with one file per section, `generated/` with the tables and numeric macros produced by the analysis) |
+| `code/` | everything needed to build and run: `src/`, `scripts/`, `analysis/`, `configs/`, `requirements.txt`, `Makefile`, `opensource/` (bcc patch). **Run every command in this guide from inside `code/`.** |
+| `documentation/` | this guide (`reproducibility_guide.md` / `.pdf`) and `background_concepts.md` (every OS/eBPF/statistics concept used, explained from scratch) |
+| `supplementary/` | `datasets/` (one complete sample run + download link and checksum of the full raw data), `experimental_results/` (every CSV/JSON behind the report), `additional_figures/` (all figures as PDF), `other_supporting_materials/` (bcc patch test log, environment of the measured machine, review log) |
+
+In the GitHub repository the same files sit at the top level (`report/` instead of `latex_report/`).
+
 ## 1. Repository layout
 
 ```
@@ -66,13 +77,27 @@ docs/LEARN.md           background on every concept used
 | Guest | Ubuntu 24.04 LTS (arm64), kernel 6.8.0-142-generic, 4 vCPU, 6 GiB (12 GiB for the analysis step) |
 | Compiler | gcc 13 (user space), clang 18.1.3 (BPF) |
 | BPF | libbpf-dev (Ubuntu 24.04 package), bpftool v7.4.0 |
-| Python | 3.12 with numpy, pandas, scikit-learn, scipy, matplotlib (Ubuntu packages) |
+| Python | 3.12 with numpy, pandas, scikit-learn, scipy, matplotlib (Ubuntu packages; exact versions pinned in `requirements.txt`) |
 | Report | IEEEtran (conference), built with tectonic or pdflatex + bibtex |
 
 The exact versions of the machine that produced the report are written
 automatically to `data/raw/environment.txt` (uname, lscpu, compiler,
 libbpf, bpftool, Python packages, kernel BPF config, available sched
 tracepoints).
+
+### Hardware and software requirements
+
+| Item | Requirement |
+|---|---|
+| CPU | 4 cores (arm64 or x86-64). Workers use CPUs 0-2, the load generator and collector CPU 3 |
+| Memory | 6 GiB for the experiments; 12 GiB for the full analysis (`analyze.py` holds all runs in memory) |
+| Disk | about 25 GiB free (raw data of all 336 runs is about 20 GB) |
+| OS | Linux with BTF, kernel 5.8 or newer (ring buffer); tested on Ubuntu 24.04, kernel 6.8. A Linux VM on macOS works (section 4) |
+| Privileges | root (`sudo`) to load BPF programs and pin maps under `/sys/fs/bpf` |
+| Time | `sudo make test`: 1 minute. Full campaign: about 3 hours plus 30 minutes of analysis, on an otherwise idle machine |
+
+Install everything with `bash scripts/setup_vm.sh` (apt packages). If you
+prefer pip for the analysis: `pip install -r requirements.txt`.
 
 Kernel requirements: `CONFIG_DEBUG_INFO_BTF=y` (for `vmlinux.h` / CO-RE and
 `tp_btf`), `CONFIG_UPROBES=y` (attrib mode only), `CONFIG_RPS=y`
@@ -147,11 +172,12 @@ Environment overrides: `TL_DURATION` (seconds per run, default 15),
 
 | Report item | File |
 |---|---|
-| Latency CCDFs (Fig. latency) | `results/fig_latency.pdf`, `latency_summary.csv` |
-| Overhead (Fig. overhead, Table) | `results/fig_overhead.pdf`, `overhead_summary.csv` |
-| Detection PR curves, metrics | `results/fig_pr.pdf`, `detection.csv` |
-| Feature/window ablation | `results/fig_ablation.pdf`, `ablation.csv` |
-| Intervention signatures (H2) | `results/fig_signature.pdf`, `interventions_summary.csv`, `results.json:h2_tests`, `results.json:signature_matrix` |
+| Data-path diagram (Fig. 1) | drawn in `report/sections/method.tex` (TikZ) |
+| Latency CCDFs (Fig. 2) | `results/fig_latency.pdf`, `latency_summary.csv` |
+| Overhead (Fig. 6, tracer ns per request in Sec. V-D) | `results/fig_overhead.pdf`, `overhead_summary.csv` |
+| Detection PR curves (Fig. 3), Table I | `results/fig_pr.pdf`, `detection.csv` |
+| Feature/window ablation (Fig. 4) | `results/fig_ablation.pdf`, `ablation.csv` |
+| Intervention signatures (H2, Fig. 5) | `results/fig_signature.pdf`, `interventions_summary.csv`, `results.json:h2_tests`, `results.json:signature_matrix` |
 | A/B overhead test | `results/abtest_runs.csv`, `results.json:abtest` |
 | net receiver placement | `results/netrcv_runs.csv`, `results.json:netrcv` |
 | Tails with no OS signal | `results/no_os_delay.json` |
@@ -215,7 +241,7 @@ no wakeup seen; charged to runqueue wait). `meta.json` from tlbench has
 
 | What | Where |
 |---|---|
-| Load levels, service times | `WORKLOADS` in `scripts/experiment.py` (optional override: `configs/workloads.json`) |
+| Load levels, service times | `configs/workloads.json` (per workload: `tlbench` arguments and the low/mid/high request rates; overrides the defaults in `scripts/experiment.py`) |
 | CPU layout | `WORKER_CPUS=0-2`, `GEN_CPU=3`, `TRACER_CPU=3` |
 | Stressor intensity | `STRESSORS` (duty cycle `-D`, threads `-n`, CPUs `-c`) |
 | Aggregation windows | `attach_agg(windows=(5, 20, 100))` in `analysis/analyze.py` |
@@ -227,3 +253,39 @@ no wakeup seen; charged to runqueue wait). `meta.json` from tlbench has
 - tlbench must link the `-K` reader for shm mode. Unmodified binaries need attrib (uprobe) mode, which costs more on short requests.
 - Slots are indexed by `tid % 4096`. Collisions are detected and counted, and their requests are dropped (zero in all our runs).
 - Virtualized timing: host preemption of vCPUs is invisible to the guest. The noise gate limits it but cannot remove it entirely.
+
+## 9. Evaluation metrics
+
+| Metric | Meaning | Where |
+|---|---|---|
+| p50 / p95 / p99 / p99.9 | latency percentiles per run, from injection to completion; we report the median over 5 runs | `latency_summary.csv` |
+| CV of p99 | run-to-run coefficient of variation of p99 (spread across the 5 repetitions) | `latency_summary.csv` |
+| Tracer CPU per request (ns) | BPF program run time plus collector CPU, divided by completed requests; the stable overhead measure | `overhead_summary.csv` |
+| Throughput loss (%) | 1 - throughput(traced) / median throughput(untraced), closed loop, with bootstrap 95% CI | `overhead_summary.csv`, Fig. 6 |
+| Dropped events, map memory | ring-buffer drops and kernel map size | `tlat.json` per run, `overhead_summary.csv` |
+| Identity residual | \|(t_end - t_start) - (on-CPU + runqueue + wakeup + blocked)\| per request; share within 5 us | `validation.csv`, `robustness_checks.json` |
+| Tail request | latency above the median p99 of five calibration runs for the same workload and load | `results.json:thresholds` |
+| PR-AUC | area under the precision-recall curve for ranking tail requests; a random ranking scores the base rate (fraction of tail requests). Used instead of accuracy because tails are rare | `detection.csv` |
+| Precision, recall, F1 | at the threshold that maximizes F1 on the training runs | `detection.csv` |
+| False alarms per minute | normal requests flagged as tail, per minute of run time | `detection.csv` |
+| Bootstrap 95% CI | resampling whole runs (not requests), so the interval reflects run-to-run variation | `detection.csv` (`ap_lo`, `ap_hi`) |
+| Fold change | mean per-request delay of a component with the stressor / without it | `interventions_summary.csv`, Fig. 5 |
+| Mann-Whitney U, Holm | one-sided test of each pre-stated signature on 5 vs. 5 per-run means; Holm corrects for running 9 tests | `results.json:h2_tests` |
+| Attribution stability | standard deviation, across the 5 runs of a condition, of the share of tail latency given to each component | `results.json:attribution_stability_std` |
+
+## 10. Quick self-check
+
+`sudo make test` (from `code/`) runs four short real runs in a temporary
+directory and prints one line per check. Expected output ends with
+`ALL CHECKS PASSED`:
+
+```
+[PASS] requests measured: ~28000 requests
+[PASS] kernel features on every request: 100.00% valid
+[PASS] no lost events / slot collisions: drops=0 collisions=0
+[PASS] accounting identity within 5 us: >= 99% of requests
+[PASS] CPU hog raises preemption wait
+[PASS] uprobe records join by request id: 100.00% of requests
+[PASS] aggregate samples written
+ALL CHECKS PASSED
+```

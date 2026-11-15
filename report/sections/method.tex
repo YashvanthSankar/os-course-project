@@ -1,8 +1,8 @@
-\section{Methodology}
+\section{Methodology Used}
 \label{sec:method}
 
 \subsection{Testbed and workloads}
-All experiments run in an Ubuntu 24.04 VM (Linux 6.8.0, 4 vCPUs, 6\,GiB)
+All experiments run in an Ubuntu 24.04 VM (Linux 6.8.0, 4 virtual CPUs (vCPUs), 6\,GiB)
 under the macOS Virtualization framework on an Apple M3 Pro. Worker threads
 run on CPUs 0--2; the load generator and the trace collector are pinned to
 CPU~3. Our benchmark, \texttt{tlbench}, sends requests at random (Poisson)
@@ -30,7 +30,7 @@ readings before and after each run are stored with it.
 
 \subsection{Kernel telemetry}
 \label{sec:telemetry}
-\sys{} attaches BTF-typed tracepoint programs to \texttt{sched\_switch},
+\sys{} attaches tracepoint programs (typed through BTF, the BPF Type Format) to \texttt{sched\_switch},
 \texttt{sched\_wakeup[\_new]}, \texttt{sched\_migrate\_task},
 \texttt{softirq\_entry/exit} and \texttt{irq\_handler\_entry/exit}. For each
 thread of the traced process, a small state machine adds up five kinds of
@@ -39,10 +39,9 @@ runnable (the kernel's \texttt{preempt} flag is set or the state is
 \texttt{TASK\_RUNNING}) until running again; (ii)~\emph{wakeup delay}, from
 \texttt{sched\_wakeup} until running; (iii)~\emph{blocked time}, from going
 to sleep until the wakeup; (iv)~time on the CPU; and (v)~hard and soft IRQ
-time, charged to the thread that was \emph{interrupted}. It also counts
+time (interrupt requests, IRQs), charged to the thread that was \emph{interrupted}. It also counts
 voluntary and involuntary switches, migrations and interrupts. A wakeup for
-a thread that is already running or queued is ignored. Every program first
-checks the process id, so other processes cost one comparison. The same
+a thread that is already running or queued is ignored. The same
 programs also update system-wide per-CPU counters (switches, involuntary
 switches, wakeups, migrations, interrupts, softirqs per type), which the
 collector samples every 5\,ms together with the kernel's pressure-stall
@@ -50,7 +49,7 @@ information (PSI). These samples are the \emph{aggregate event-count}
 baseline.
 
 \subsection{Matching requests to kernel data}
-We compare three ways to find the kernel data that belongs to one request.
+Fig.~\ref{fig:arch} shows how the pieces fit together. We compare three ways to find the kernel data that belongs to one request.
 \textbf{Uprobe windows} place uprobes on two empty functions,
 \texttt{tl\_req\_begin} and \texttt{tl\_req\_end}. The first takes a
 snapshot of the thread's counters inside the kernel, and the second sends
@@ -67,6 +66,36 @@ each request. Because \texttt{bpf\_ktime\_get\_ns} and
 the part of the current on-CPU stretch that has not been recorded yet. The
 kernel does no work per request; it only works when a scheduler or
 interrupt event actually touches a traced thread.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\scriptsize, >=stealth,
+  box/.style={draw, rounded corners=1.5pt, align=center, inner sep=1.5pt,
+              minimum height=0.7cm, text width=2.1cm}]
+\node[box] (map)  at (1.2,0)   {Per-thread counters\\(mmap-able BPF array)};
+\node[box] (tp)   at (4.2,0)   {Tracepoint programs\\(switch, wakeup, IRQ)};
+\node[box] (glob) at (7.2,0)   {Per-CPU event\\counters};
+\node[box] (app)  at (1.2,1.6) {Application\\(\texttt{tlbench})};
+\node[box] (col)  at (7.2,1.6) {Collector\\(\texttt{tlat})};
+\node[box, text width=8.0cm] (ana) at (4.2,2.85)
+  {Offline analysis: join on request id, latency breakdown with inherited
+   delay, detection models (H1), intervention tests (H2)};
+\draw[->] (tp) -- (map);
+\draw[->] (tp) -- (glob);
+\draw[->, dashed] (map) -- node[pos=0.72, right]{plain loads, no trap} (app);
+\draw[->] (glob) -- node[right]{every 5\,ms} (col);
+\draw[->] (app) -- node[right]{per request} (app |- ana.south);
+\draw[->] (col) -- node[left]{per 5\,ms window} (col |- ana.south);
+\draw[gray, densely dotted] (0.05,0.71) -- (8.35,0.71);
+\node[gray] at (5.7,0.9) {user space};
+\node[gray] at (5.7,0.52) {kernel};
+\end{tikzpicture}
+\caption{Data path of \sys. Tracepoint programs keep per-thread counters in a
+memory-mapped BPF array, which the application reads at request start and
+end with no trap; system-wide counters are sampled every 5\,ms as the
+aggregate baseline.}
+\label{fig:arch}
+\end{figure}
 
 \textbf{Validation.} The four time counters come from different
 tracepoints, yet for every request they must add up to its service time:
@@ -115,7 +144,7 @@ weight them back in every metric.
 \textbf{Interventions (H2).} At mid load we add one stressor at a time, five
 runs each, in random order: a CPU hog on the worker CPUs that runs for 40\%
 of every 10\,ms; a softirq flood (UDP over loopback sent from CPU~3, with
-RPS steering the receive work to CPUs 0--2); an I/O writer (1\,MiB writes
+Receive Packet Steering (RPS) moving the receive work to CPUs 0--2); an I/O writer (1\,MiB writes
 with \texttt{fdatasync}); and an affinity change (a hog on CPU~0 with
 workers on CPUs 0--2, compared with workers moved to CPUs 1--2 at 2/3 of
 the rate, so that the load per CPU stays the same). Before running them we

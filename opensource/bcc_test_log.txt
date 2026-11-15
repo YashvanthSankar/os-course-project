@@ -1,0 +1,46 @@
+# bcc runqlat --split patch: build and test output
+# Run: bash opensource/build_and_test.sh (Ubuntu 24.04, Linux 6.8.0-142-generic, arm64 VM), 2026-11-14
+# Built against bcc c398a9a7; the patch also applies cleanly to master 34d9495a (2026-10-04).
+# Compiler output omitted; test output below is unedited.
+
+== test 1: plain runqlat still works (no -S)
+       128 -> 255        : 0        |                                        |
+       256 -> 511        : 0        |                                        |
+       512 -> 1023       : 0        |                                        |
+      1024 -> 2047       : 0        |                                        |
+      2048 -> 4095       : 1        |                                        |
+== test 2: -S with a CPU hog sharing CPU 0 -> preemption histogram appears
+Tracing run queue latency... Hit Ctrl-C to end.
+
+
+run queue latency [after wakeup]
+     usecs               : count    distribution
+         0 -> 1          : 71       |****************************************|
+         2 -> 3          : 27       |***************                         |
+         4 -> 7          : 25       |**************                          |
+         8 -> 15         : 3        |*                                       |
+        16 -> 31         : 1        |                                        |
+
+run queue latency [after preemption]
+     usecs               : count    distribution
+         0 -> 1          : 0        |                                        |
+         2 -> 3          : 0        |                                        |
+         4 -> 7          : 2        |                                        |
+         8 -> 15         : 0        |                                        |
+        16 -> 31         : 0        |                                        |
+        32 -> 63         : 0        |                                        |
+        64 -> 127        : 0        |                                        |
+       128 -> 255        : 0        |                                        |
+       256 -> 511        : 0        |                                        |
+       512 -> 1023       : 0        |                                        |
+      1024 -> 2047       : 1        |                                        |
+      2048 -> 4095       : 996      |****************************************|
+      4096 -> 8191       : 2        |                                        |
+== test 3: -S -P per process
+pid = 2662 stressor [after preemption]
+     usecs               : count    distribution
+         0 -> 1          : 0        |                                        |
+         2 -> 3          : 0        |                                        |
+== test 4: -S with --pidnss is rejected
+--split cannot be used with --pidnss.
+rejected as expected

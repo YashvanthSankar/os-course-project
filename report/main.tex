@@ -18,6 +18,8 @@
 \usepackage{xcolor}
 \usepackage{url}
 \usepackage{placeins}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
 \usepackage[hidelinks]{hyperref}
 \newcommand{\sys}{\textsc{TailTag}}
 \newcommand{\todo}[1]{\textcolor{red}{#1}}
@@ -28,17 +30,12 @@
 \title{\sys: Trap-Free eBPF Attribution of OS-Induced Tail Latency to Individual Requests}
 
 \author{
-\IEEEauthorblockN{Yashvanth S}
-\IEEEauthorblockA{CS24I1029}
-\and
-\IEEEauthorblockN{Jeevanandham T}
-\IEEEauthorblockA{CS24I1035}
-\and
-\IEEEauthorblockN{Nithillakrishi PY}
-\IEEEauthorblockA{CS24I1039}
-\and
-\IEEEauthorblockN{Akula Sai Teja}
-\IEEEauthorblockA{CS24I1054}
+\IEEEauthorblockN{Yashvanth S (CS24I1029), Jeevanandham T (CS24I1035),\\
+Nithillakrishi PY (CS24I1039), Akula Sai Teja (CS24I1054)}
+\IEEEauthorblockA{\textit{Department of Computer Science and Engineering}\\
+\textit{Indian Institute of Information Technology, Design and Manufacturing Kancheepuram}\\
+Chennai, India\\
+\{cs24i1029, cs24i1035, cs24i1039, cs24i1054\}@iiitdm.ac.in}
 }
 
 \maketitle
@@ -59,6 +56,6 @@ eBPF, tail latency, Linux scheduler, softirq, observability, attribution
 \input{sections/conclusion}
 
 \bibliographystyle{IEEEtran}
-\bibliography{refs}
+\bibliography{references}
 
 \end{document}

@@ -16,7 +16,8 @@ with tempfile.NamedTemporaryFile(suffix=".html") as tmp:
     subprocess.run(["pdftotext", "-bbox", pdf, tmp.name], check=True)
     h = open(tmp.name).read()
 pages = re.split(r"<page ", h)[1:]
-names = {"Introduction": "Intro", "Related": "Related", "Methodology": "Method",
+names = {"Introduction": "Intro", "Problem": "Problem", "Objectives": "Objectives",
+         "Related": "Related", "Literature": "LitSurvey", "Methodology": "Method",
          "Experimental": "Results", "Conclusion": "Concl"}
 marks = []
 for pi, p in enumerate(pages):
@@ -25,7 +26,7 @@ for pi, p in enumerate(pages):
     words = re.findall(r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]*)</word>', p)
     for i, (x0, y0, x1, y1, t) in enumerate(words):
         nxt = words[i + 1][4] if i + 1 < len(words) else ""
-        if t in ("I.", "II.", "III.", "IV.", "V.") and nxt.title() in names:
+        if t in ("I.", "II.", "III.", "IV.", "V.", "VI.", "VII.") and nxt.title() in names:
             marks.append((names[nxt.title()], pi, float(x0), float(y0)))
         if t.title() == "References" and pi == len(pages) - 1:
             marks.append(("Refs", pi, float(x0), float(y0)))
@@ -41,4 +42,6 @@ end = cp(len(pages) - 1, W if R else 0, max(R) if R else max(L))
 vals = [v for _, v in pos] + [end]
 for i, (n, v) in enumerate(pos):
     print("%-9s %.2f pages" % (n, (vals[i + 1] - v) / 2))
-print("abstract+intro = %.2f   total pages = %d" % ((vals[2] - vals[0]) / 2, len(pages)))
+lit = [i for i, (n, _) in enumerate(pos) if n in ("Related", "LitSurvey")]
+k = lit[0] if lit else 2
+print("abstract+intro(problem+objectives) = %.2f   total pages = %d" % ((vals[k] - vals[0]) / 2, len(pages)))

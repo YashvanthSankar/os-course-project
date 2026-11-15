@@ -15,7 +15,11 @@ Main pieces:
 - **`analysis/analyze.py`**: per-request decomposition, detection (rule / logistic / forest; split by run; held-out workload), ablations, intervention tests, figures.
 - **`opensource/`**: upstream patch for bcc `runqlat` (`-S`, separating wakeup and preemption latency).
 
-Submission files (in [dist/](dist/), rebuilt with `make package`):
+Course submission archive: `bash scripts/make_submission.sh 01` builds
+`dist/Team_01_Assignment_A1.zip` in the required layout (README, latex_report,
+code, documentation, supplementary).
+
+Individual files (in [dist/](dist/), rebuilt with `make package`):
 
 - [TailTag_report.pdf](dist/TailTag_report.pdf): the 6-page IEEE report
 - [report_latex.zip](dist/report_latex.zip): LaTeX sources of the report
@@ -52,6 +56,6 @@ sudo bash scripts/run_all.sh   # full reproduction
 ## Data
 
 - **Sample run** (in the repo): [data/sample/](data/sample/) — one complete raw run, gzip-compressed.
-- **Full raw data** (~20 GB, 336 runs): **TODO — add the Drive/Zenodo link.** Archive `tailtag_raw_data.tar.zst`, 4.4 GB, SHA-256 `668d096981e4fab57d59fcc6694d261638905369f4944c9bea45317d415feda5`.
+- **Full raw data** (~20 GB, 336 runs): Archive `tailtag_raw_data.tar.zst`, 4.4 GB, SHA-256 `668d096981e4fab57d59fcc6694d261638905369f4944c9bea45317d415feda5`.
 - **Processed results** (every table and figure in the report): [results/](results/)
 - **Data dictionary:** [docs/REPRODUCE.md](docs/REPRODUCE.md) §6

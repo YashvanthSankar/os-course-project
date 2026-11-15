@@ -1,7 +1,7 @@
-\section{Introduction}
+\section{Problem Definition}
 \label{sec:intro}
 
-\textbf{Domain.} Users judge an interactive service by its slowest responses.
+\textbf{Background.} Users judge an interactive service by its slowest responses.
 When one user action fans out to many servers, a rare slow response on any
 one of them delays the whole action, so the tail of each server (its slowest
 1\%, the p99), not its average, sets the latency the user
@@ -13,8 +13,8 @@ Li et al.~\cite{li2014tales} showed that such effects can make the tail of
 simple Linux servers an order of magnitude worse than queueing theory
 predicts.
 
-eBPF lets us watch these events on a running system at low cost: small
-programs, checked by the kernel's verifier, run at kernel tracepoints and
+eBPF (extended Berkeley Packet Filter) lets us watch these events on a
+running system at low cost: small programs, checked by the kernel's verifier, run at kernel tracepoints and
 keep their results in kernel data structures called
 maps~\cite{kernelbpf}. The usual eBPF tools, however, report totals: a
 histogram of runqueue waits for a process, softirq time per CPU, counts per
@@ -23,7 +23,7 @@ switches in the same minute still cannot tell whether the switches
 \emph{caused} the slow requests, which requests they hit, or whether those
 requests simply queued behind a burst of load.
 
-\textbf{Problem.} For a service whose requests can be timed one by one, we
+\textbf{Problem statement.} For a service whose requests can be timed one by one, we
 want to (i)~find the slow (tail) requests, (ii)~record for each one the
 kernel events that delayed it, and (iii)~find which kernel signals really
 separate slow requests from normal ones. Tracing may cost at most 5\% of
@@ -34,32 +34,32 @@ delayed by something that happened to the requests \emph{ahead} of it in
 the queue. And in a virtual machine, the host can pause the virtual CPUs
 without the guest kernel noticing.
 
-\textbf{Contributions.}
+\section{Objectives}
+\label{sec:objectives}
+We set out to answer two hypotheses. \textbf{H1}: kernel data aligned to
+each request's time window separates slow requests from normal ones better
+than system-wide event counts. \textbf{H2}: each controlled stressor raises
+the delay component we predicted for it. To test them, the project has four
+objectives, each with the outcome we reached:
 \begin{itemize}
-\item \sys{}, an eBPF tool that keeps per-thread counters of preemption
+\item \textbf{Build a low-overhead tracer.} \sys{} is an eBPF tool that keeps per-thread counters of preemption
 wait, wakeup delay, blocked time and interrupt time (charged to the thread
-that was interrupted) in a BPF map that user space can map into memory.
-ghOSt's BPF scheduler shares per-task state through the same kind of
-map~\cite{rhoden2022ghostbpf}; we use it to explain latency instead. The
-application copies its own counters at the start and end of each request
+that was interrupted) in a BPF map that user space can map into memory
+(\S\ref{sec:related}). The application copies its own counters at the start and end of each request
 with plain memory loads, with no system call or trap. This costs
 \ovNsKvShm--\ovNsCpuShm{}\,ns of tracer CPU per request, 47--53$\times$ less
 than uprobes (\S\ref{sec:overhead}).
-\item A breakdown of each request's latency that includes delay
+\item \textbf{Attribute each request's latency.} We break each request's
+latency into parts, including delay
 \emph{inherited} from requests queued ahead of it, checked by an accounting
-identity (Eq.~\eqref{eq:identity}) that holds within 5\,$\mu$s for at least
+identity~\eqref{eq:identity} that holds within 5\,$\mu$s for at least
 \valWithin\% of requests in every run.
-\item An evaluation over three workloads, three load levels and five
-repetitions. It compares per-request kernel data with system-wide event
+\item \textbf{Evaluate detection and attribution.} Over three workloads,
+three load levels and five repetitions, we compare per-request kernel data with system-wide event
 counts and with a queue-length baseline, on a workload the models never saw
-and on fresh runs (H1), and checks the attribution by adding one stressor
+and on fresh runs (H1), and check the attribution by adding one stressor
 at a time (H2).
-\item Two by-products: a noise gate that detects hypervisor interference in
+\item \textbf{Make the results trustworthy and reusable.} We built a noise gate that detects hypervisor interference in
 VM experiments, and a tested patch for bcc's \texttt{runqlat} that separates
 waits after a wakeup from waits after a preemption.
 \end{itemize}
-
-\textbf{Hypotheses.} \textbf{H1}: kernel data aligned to each request's
-time window separates slow requests from normal ones better than
-system-wide event counts. \textbf{H2}: each controlled stressor raises the
-delay component we predicted for it.

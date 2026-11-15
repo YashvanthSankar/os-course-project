@@ -7,9 +7,9 @@ wakeup delay, blocked time and interrupt time in a BPF map that the
 application can map into its own memory. The application reads its counters
 at the start and end of each request with ordinary memory loads, so no
 kernel trap or ring-buffer record is needed per request. This costs
-\ovNsKvShm--\ovNsCpuShm{}\,ns of tracer CPU per request, 47--53$\times$ less
+\ovNsKvShm--\ovNsCpuShm{} ns of tracer CPU per request, 47 to 53 times less
 than uprobe-based tracing, and the measured parts add up to the request's
-service time within 5\,$\mu$s for at least \valWithin\% of requests. Across
+service time within 5 microseconds for at least \valWithin\% of requests. Across
 336 runs of three workloads, queueing explained most slow requests, and
 per-request kernel data detected them no better than system-wide event
 counts. It did better on one unseen workload (PR-AUC \apAlLHeld{} vs.\

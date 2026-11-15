@@ -64,6 +64,15 @@ Open items, most important first.
 - References (2026-11-15): 11 in total: 8 peer-reviewed papers (7 conference papers + 1 CACM article), 1 conference talk (ghost-bpf, LPC 2022), 2 docs/software (kernel BPF docs, bcc). Removed on request: Rezvani et al. (ISPASS 2024), SchedBlame (arXiv), Netflix blog. Treadmill author list corrected to the publisher's record (Zhang, Meisner, Mars, Tang; Crossref + OpenAlex); page numbers added for Tales, wPerf, Wasted Cores (Crossref). All verified.
 - "No signal" threshold stated (10 µs), now with 5/20 µs sensitivity.
 
+### Faculty guidelines and rubric pass (2026-11-15)
+- Section names now follow the guideline: Problem Definition, Objectives, Literature Survey, Methodology Used, Experimental Results, Conclusion, References.
+- IEEE template rules: author block with department/institute/city/email, no math in the abstract, "(1)" / "Equation (1)" style, abbreviations defined at first use, figures numbered in citation order, "data are".
+- New Fig. 1: data-path diagram (TikZ), for the rubric's "diagram" item.
+- Submission archive: `bash scripts/make_submission.sh 01` -> `dist/Team_01_Assignment_A1.zip` with README.md, latex_report/, code/ (incl. configs/, requirements.txt), documentation/ (reproducibility guide .md/.pdf), supplementary/.
+- Tested from a fresh unzip: Tectonic and pdfLaTeX (Overleaf engine) both give 6 pages with no errors; `make` + `sudo make test` pass (7/7).
+- [ ] Confirm the author emails (pattern taken from cs24i1039@iiitdm.ac.in).
+- [ ] Add the public download link of the raw-data archive (README.md, data/sample/README.md).
+
 ### Readability pass (2026-11-15)
 - All sections rewritten in plain language for students and faculty; numbered Eq. (1); reproducibility paragraph with tool versions; A/B test called "inconclusive"; early-warning base rate; grouped detection table; doubled "instead" removed; ghost-bpf claim cites the LPC 2022 talk (slides confirm the mmap-able BPF array). Still 6 pages; abstract+intro 0.90, related 0.52, method 1.27, results 2.50.
 - Note: the assignment PDF says 8-10 pages, but the instructor's own rule (1 + 2/3 + 1.5 + 2.5 pages) gives about 6; we follow the instructor.
