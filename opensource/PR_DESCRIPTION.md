@@ -1,7 +1,7 @@
 # libbpf-tools/runqlat: add -S/--split to separate wakeup and preemption latency
 
 **Target:** https://github.com/iovisor/bcc (libbpf-tools)
-**Status:** built and tested (2026-11-14, Linux 6.8, arm64 VM); applies cleanly to current master `34d9495a`; not yet submitted (submit from your own GitHub account)
+**Status:** built and tested (2026-11-14, Linux 6.8, arm64 VM); applies cleanly to bcc master `34d9495a`; ready to be opened as a pull request upstream.
 
 ## Summary
 
