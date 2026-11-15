@@ -2,8 +2,8 @@
 """Share of tail requests with no OS-delay signal (no own or inherited
 scheduler / IRQ / blocking delay >= 10 us), per evaluation split.
 
-    python3 analysis/no_signal.py --raw data/raw --res results
-Writes results/no_signal.json. Run after analyze.py (uses its thresholds).
+    python3 analysis/no_os_delay.py --raw data/raw --res results
+Writes results/no_os_delay.json. Run after analyze.py (uses its thresholds).
 """
 import argparse
 import json
@@ -35,7 +35,7 @@ def main():
             o[0] += int(t["none"].values[tails].sum())
             o[1] += int(tails.sum())
     res = {k: v[0] / max(1, v[1]) for k, v in out.items()}
-    (Path(a.res) / "no_signal.json").write_text(json.dumps(res))
+    (Path(a.res) / "no_os_delay.json").write_text(json.dumps(res))
     print(res)
 
 

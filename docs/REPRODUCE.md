@@ -7,23 +7,31 @@ and how to reproduce every number and figure in the report.
 
 ```
 src/
-  tlbench.c      open-loop request benchmark (cpu | kv | net workloads)
-  tlat.bpf.c     eBPF programs: scheduler + IRQ state machine, request windows
-  tlat.c         user-space loader/collector (libbpf skeleton)
-  tlat.h         structs shared by kernel and user side
-  stressor.c     one controlled interference source: cpu | net | io
-  hiccup.c       platform-noise meter (lost vCPU time)
+  tlbench.c             open-loop request benchmark (cpu | kv | net workloads)
+  tlat.bpf.c            eBPF programs: scheduler + IRQ state machine, request windows
+  tlat.c                user-space loader/collector (libbpf skeleton)
+  tlat.h                structs shared by kernel and user side
+  stressor.c            one controlled interference source: cpu | net | io
+  hiccup.c              platform-noise meter (lost vCPU time)
 scripts/
-  setup_vm.sh    installs the toolchain on Ubuntu 24.04
-  experiment.py  experiment driver (noise gate, randomized order, raw data)
-  run_all.sh     one-command reproduction: build -> experiments -> analysis
+  setup_vm.sh           installs the toolchain on Ubuntu 24.04
+  experiment.py         experiment driver (noise gate, randomized order, raw data)
+  run_all.sh            one-command reproduction: build -> experiments -> analysis
+  smoke_test.py         1-minute self-check of the whole pipeline (sudo make test)
+  measure_pages.py      page length of each report section
 analysis/
-  analyze.py     stages A-E: latency, overhead, join/validation, detection, interventions
-data/raw/        raw run data (one directory per run; schema in section 6)
-results/         tables (csv), results.json, figures (pdf) produced by analyze.py
-report/          IEEE LaTeX source of the report
-opensource/      upstream contribution to bcc (runqlat --split) + test script
-docs/LEARN.md    background on every concept used
+  analyze.py            stages A-E: latency, overhead, join/validation, detection, interventions
+  no_os_delay.py        share of tail requests with no OS-delay signal
+  robustness_checks.py  identity on switched requests, no-signal floors, noise-gate
+                        waits, held-out workload rotation, fresh net runs
+  preempt_fix_check.py  validation runs before/after the sched_switch preempt-flag fix
+  make_tables.py        LaTeX tables and number macros for the report
+data/raw/               raw run data (one directory per run; schema in section 6)
+data/sample/            one complete raw run, gzip-compressed (in the repo)
+results/                tables (csv), results.json, figures (pdf) produced by analyze.py
+report/                 IEEE LaTeX source of the report
+opensource/             patch for upstream bcc (runqlat --split) + test script
+docs/LEARN.md           background on every concept used
 ```
 
 ## 2. How the pieces fit
@@ -97,7 +105,7 @@ before and after each run is stored in its `cond.json`.
 **Quick self-check first (about 1 minute):** `sudo make test` runs four
 short real runs (`scripts/smoke_test.py`) and checks that every request gets
 kernel features, nothing is dropped, the accounting identity holds for
->= 99% of requests, a CPU hog raises preemption wait at least 5x, uprobe
+at least 99% of requests, a CPU hog raises preemption wait at least 5x, uprobe
 records join by request id, and the aggregate samples are written.
 
 The bcc patch is tested separately with `bash opensource/build_and_test.sh`.
@@ -123,9 +131,9 @@ sudo python3 scripts/experiment.py fixval         # 18 validation runs after the
 sudo python3 scripts/experiment.py fixval2        # same 18 runs after the sched_switch preempt-flag fix
 sudo python3 scripts/experiment.py netfresh       # 9 fresh net runs (unused seeds) for a clean held-out test
 python3 analysis/analyze.py --raw data/raw --out results     # ~30 min, needs ~7 GB RAM
-python3 analysis/no_signal.py --raw data/raw --res results
-python3 analysis/review_checks.py --raw data/raw --res results   # identity subset, floors, rotation, fresh net
-python3 analysis/fixval2_check.py --raw data/raw --res results   # fixval vs fixval2 (preempt-flag fix)
+python3 analysis/no_os_delay.py --raw data/raw --res results
+python3 analysis/robustness_checks.py --raw data/raw --res results   # identity subset, floors, rotation, fresh net
+python3 analysis/preempt_fix_check.py --raw data/raw --res results   # fixval vs fixval2 (preempt-flag fix)
 python3 analysis/make_tables.py --res results --out report/generated
 ```
 
@@ -146,9 +154,9 @@ Environment overrides: `TL_DURATION` (seconds per run, default 15),
 | Intervention signatures (H2) | `results/fig_signature.pdf`, `interventions_summary.csv`, `results.json:h2_tests`, `results.json:signature_matrix` |
 | A/B overhead test | `results/abtest_runs.csv`, `results.json:abtest` |
 | net receiver placement | `results/netrcv_runs.csv`, `results.json:netrcv` |
-| Tails with no OS signal | `results/no_signal.json` |
-| Identity on switched requests, no-signal floors, noise-gate waits, held-out rotation, fresh net | `results/review_checks.json` |
-| Preempt-flag fix: identity before/after, how often the case occurred | `results/fixval2.json` |
+| Tails with no OS signal | `results/no_os_delay.json` |
+| Identity on switched requests, no-signal floors, noise-gate waits, held-out rotation, fresh net | `results/robustness_checks.json` |
+| Preempt-flag fix: identity before/after, how often the case occurred | `results/preempt_fix_check.json` |
 | H2 count after Holm correction | `report/generated/macros.tex` (`hTwoRaw`, `hTwoHolm`), from `results.json:h2_tests` |
 | Every number quoted in the report | `report/generated/macros.tex` (generated by `make_tables.py`) |
 | Section page lengths | `python3 scripts/measure_pages.py report/main.pdf` |
@@ -207,7 +215,7 @@ no wakeup seen; charged to runqueue wait). `meta.json` from tlbench has
 
 | What | Where |
 |---|---|
-| Load levels, service times | `WORKLOADS` in `scripts/experiment.py` (or `configs/workloads.json`) |
+| Load levels, service times | `WORKLOADS` in `scripts/experiment.py` (optional override: `configs/workloads.json`) |
 | CPU layout | `WORKER_CPUS=0-2`, `GEN_CPU=3`, `TRACER_CPU=3` |
 | Stressor intensity | `STRESSORS` (duty cycle `-D`, threads `-n`, CPUs `-c`) |
 | Aggregation windows | `attach_agg(windows=(5, 20, 100))` in `analysis/analyze.py` |

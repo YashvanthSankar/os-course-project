@@ -309,7 +309,7 @@ def main():
                     for ck, col in cols.items():
                         M(f"abs{wl.capitalize()}{pk}{ck}Ctl", us_(S.loc[f"{wl}-{cc}", col]))
                         M(f"abs{wl.capitalize()}{pk}{ck}Int", us_(S.loc[f"{wl}-{ci}", col]))
-    rc = res_dir / "review_checks.json"
+    rc = res_dir / "robustness_checks.json"
     if rc.exists():
         Z = json.loads(rc.read_text())
         nw = Z.get("noise_wait", {})
@@ -351,7 +351,7 @@ def main():
         if v:
             M("freshBase", f"{v['base_rate']:.2f}"); M("freshRuns", v["runs"])
             M("freshBasePct", f"{100 * v['base_rate']:.1f}")
-    fv = res_dir / "fixval2.json"
+    fv = res_dir / "preempt_fix_check.json"
     if fv.exists():
         Z = json.loads(fv.read_text())
         a, b = Z["fixval"], Z["fixval2"]
@@ -375,7 +375,7 @@ def main():
             else:
                 break
         M("hTwoRaw", sum(p_ < 0.05 for p_ in ps)); M("hTwoHolm", keep); M("hTwoN", len(ps))
-    ns = res_dir / "no_signal.json"
+    ns = res_dir / "no_os_delay.json"
     if ns.exists():
         z = json.loads(ns.read_text())
         for k, kk in (("test", "Test"), ("held", "Held"), ("train", "Train")):

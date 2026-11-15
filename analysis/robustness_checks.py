@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Checks requested in the pre-submission review (TODO.md sections 1, 3, 5, 6).
+"""Robustness checks behind the measurement-validity and H1 claims in the report.
 
-    python3 analysis/review_checks.py --raw data/raw --res results
+    python3 analysis/robustness_checks.py --raw data/raw --res results
 
 Run after analyze.py (uses its calibrated thresholds). Writes
-results/review_checks.json. One pass over the raw runs computes:
+results/robustness_checks.json. One pass over the raw runs computes:
 
   noise_wait     how long the noise gate made runs wait (it never rejects)
   identity       accounting identity within 5 us, all requests vs. requests
@@ -163,7 +163,7 @@ def main():
     dev = camp[camp.workload.isin(["cpu", "kv"])]
     out["netfresh"] = evaluate(dev[dev.rep <= 2], {"netfresh": F[F.exp == "netfresh"]})
 
-    (res / "review_checks.json").write_text(json.dumps(out, indent=1))
+    (res / "robustness_checks.json").write_text(json.dumps(out, indent=1))
     print(json.dumps({k: v for k, v in out.items() if k not in ("rotation", "netfresh")}, indent=1))
 
 
