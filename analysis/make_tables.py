@@ -144,7 +144,7 @@ def main():
              "control + aggregate": "proxy+aggr.", "control + aligned": "proxy+aligned"}
     sets = list(dict.fromkeys(det.set))
     short = {"logreg": "LR", "forest": "RF"}
-    rows = []
+    rows, prev = [], None
     for fs, mdl in order:
         g = det[det.features == fs]
         g = g[g.model.str.startswith("rule")] if mdl is None else g[g.model == mdl]
@@ -152,14 +152,17 @@ def main():
             continue
         m0 = g.iloc[0].model
         mname = "rule" if m0.startswith("rule") else short.get(m0, m0)
-        cells = [label[fs], mname]
+        cells = [label[fs] if fs != prev else "", mname]
+        if prev is not None and fs != prev:
+            rows.append("\\addlinespace[2pt]")
+        prev = fs
         for sname in sets:
             h = g[g.set == sname]
             if h.empty:
                 cells.append("--")
                 continue
             r = h.iloc[0]
-            cells.append(f"{r.ap:.2f} [{r.ap_lo:.2f},{r.ap_hi:.2f}]")
+            cells.append(f"{r.ap:.2f} [{r.ap_lo:.2f}, {r.ap_hi:.2f}]")
             cells.append(f"{r.f1:.2f}")
         rows.append(" & ".join(cells) + " \\\\")
     (out / "tab_detect.tex").write_text(
@@ -240,6 +243,7 @@ def main():
             M(f"ewAp{kk}", f"{ew[k]['ap']:.2f}")
             M(f"ewPers{kk}", f"{ew[k]['ap_persistence']:.2f}")
             M(f"ewBase{kk}", f"{ew[k]['base_rate']:.2f}")
+            M(f"ewBasePct{kk}", f"{100 * ew[k]['base_rate']:.0f}")
     # signature fold changes: \sigCpuCpuhogRunq etc.
     sm = R.get("signature_matrix")
     if sm:

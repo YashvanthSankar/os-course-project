@@ -16,7 +16,7 @@ Status updated 2026-11-14. Open items are marked **[ ]**.
 - [x] **Queueing control = diagnosis, not prediction**: reworded in results §H1.
 - [x] **Base rates in the detection table**: caption now gives test 0.20, net 0.05; text gives 20.4% / 4.9%.
 - [x] **H1 line for net**: "about twice the PR-AUC of aggregate counts", and "the aggregates still carry signal, at 4–5× the base rate".
-- [x] **Cited two close prior works** (both verified: Crossref DOI 10.1109/ISPASS61541.2024.00013; arXiv 2609.02052, labelled as a preprint): Rezvani et al. ISPASS 2024 (reconstruct vs. explain) and SchedBlame (culprit containers vs. per-request).
+- [x] ~~**Cited two close prior works**~~ (later removed from the report on request, 2026-11-15; still useful viva background) (both verified: Crossref DOI 10.1109/ISPASS61541.2024.00013; arXiv 2609.02052, labelled as a preprint): Rezvani et al. ISPASS 2024 (reconstruct vs. explain) and SchedBlame (culprit containers vs. per-request).
 - [x] **Noise gate**: results now say the gate waits rather than rejects; 35 of 318 runs waited (median 15 s, longest 20 min).
 
 ## 4. Code fix
@@ -61,8 +61,12 @@ Open items, most important first.
 - "We found no…" gap wording.
 - Interrupt time "charged to the interrupted thread".
 - Slot collisions counted (0 in all runs); TID reuse harmless since only deltas are used.
-- References: 14 in total: 9 papers (8 peer-reviewed conference papers + 1 CACM article), 1 arXiv preprint, 1 conference talk, 3 docs/software/blog. All verified.
+- References (2026-11-15): 11 in total: 8 peer-reviewed papers (7 conference papers + 1 CACM article), 1 conference talk (ghost-bpf, LPC 2022), 2 docs/software (kernel BPF docs, bcc). Removed on request: Rezvani et al. (ISPASS 2024), SchedBlame (arXiv), Netflix blog. Treadmill author list corrected to the publisher's record (Zhang, Meisner, Mars, Tang; Crossref + OpenAlex); page numbers added for Tales, wPerf, Wasted Cores (Crossref). All verified.
 - "No signal" threshold stated (10 µs), now with 5/20 µs sensitivity.
+
+### Readability pass (2026-11-15)
+- All sections rewritten in plain language for students and faculty; numbered Eq. (1); reproducibility paragraph with tool versions; A/B test called "inconclusive"; early-warning base rate; grouped detection table; doubled "instead" removed; ghost-bpf claim cites the LPC 2022 talk (slides confirm the mmap-able BPF array). Still 6 pages; abstract+intro 0.90, related 0.52, method 1.27, results 2.50.
+- Note: the assignment PDF says 8-10 pages, but the instructor's own rule (1 + 2/3 + 1.5 + 2.5 pages) gives about 6; we follow the instructor.
 
 ### Assignment checklist pass (2026-11-14)
 - Overhead comparison is now a figure; F1 and false alarms/min, p95, memory and attribution stability added to the report.

@@ -2,64 +2,58 @@
 \label{sec:related}
 
 \textbf{Sources of tail latency.} Dean and Barroso~\cite{dean2013tail}
-showed that, in fan-out services, the latency tail of individual servers
-sets the latency users see, and that rare stalls which hardly matter on one
-machine dominate at scale. Li et al.~\cite{li2014tales} is the study
-closest to ours. They compared null-RPC, Memcached and Nginx servers on
-Linux with an ideal queueing model and traced the excess tail to background
-processes, non-FIFO scheduling, how connections are bound to threads, where
-NIC interrupts land relative to server threads, and power saving. Each cause
-was confirmed by changing one setting and rerunning; our one-at-a-time
-interventions follow the same idea. Treadmill~\cite{zhang2016treadmill}
-showed that load testers distort tails through client-side queueing,
-closed-loop arrivals and wrong aggregation. It then attributed tail changes
-to hardware and software factors with quantile regression over many runs.
-Its pitfalls changed our own harness (\S\ref{sec:method}). Both works
-attribute the tail to a \emph{configuration}, offline and across runs. They
-do not say which OS events delayed a given request while the system runs.
+showed that in fan-out services the tail of each server sets the latency
+users see, so stalls that are rare on one machine become common at scale.
+Li et al.~\cite{li2014tales} is the study closest to ours. They compared
+null-RPC, Memcached and Nginx servers on Linux with an ideal queueing model
+and traced the extra tail to background processes, non-FIFO scheduling, the
+way connections are bound to threads, where NIC interrupts land, and power
+saving. They confirmed each cause by changing one setting and rerunning;
+our one-stressor-at-a-time experiments follow the same idea.
+Treadmill~\cite{zhang2016treadmill} showed that load generators distort
+tails through client-side queueing, closed-loop sending and wrong
+aggregation, and then attributed tail changes to hardware and software
+settings with quantile regression. Its pitfalls shaped our load generator
+(\S\ref{sec:method}). Both works blame the tail on a \emph{configuration},
+offline and across many runs. Neither says which OS events delayed a
+particular request.
 
 \textbf{Waiting and scheduler analysis.} wPerf~\cite{zhou2018wperf} records
-waiting events between threads and builds wait-for graphs to find the
-events that cap throughput, at about 5\% overhead. Lozi et
+which threads wait for which others and builds wait-for graphs to find the
+waits that limit throughput, at about 5\% overhead. Lozi et
 al.~\cite{lozi2016wasted} found Linux load-balancing bugs that left cores
-idle while threads waited in runqueues, a direct case of the scheduler
-creating delay. Both target throughput or scheduler correctness, not single
-slow requests.
+idle while runnable threads waited, a clear case of the scheduler itself
+creating delay. Both study throughput or scheduler correctness, not single
+slow requests. Caladan~\cite{fried2020caladan} reallocates cores every few
+microseconds using queueing delay as its main signal. Our finding that
+queue length is the strongest tail signal (\S\ref{sec:h1}) agrees with that
+choice, but Caladan replaces the Linux scheduler with its own runtime.
 
-\textbf{eBPF observability.} The kernel BPF interface~\cite{kernelbpf}
-offers verified programs on stable tracepoints, maps and ring buffers. The
-bcc tools~\cite{bcc} build on it: \texttt{runqlat} reports runqueue latency
-as a histogram per CPU, process or cgroup, and similar tools cover softirq
-and off-CPU time. Netflix uses runqueue latency per container in production
-to detect noisy neighbours~\cite{netflix2024noisy}, and the SchedBlame
-preprint~\cite{li2026schedblame} names the cgroups that ran while a
-container waited. All of these aggregate over time, a task or a container,
-so their output cannot be joined with the latency of one request, and
-\texttt{runqlat} merges wakeup and preemption waits into one histogram.
-Rezvani et al.~\cite{rezvani2024ispass} showed that eBPF syscall tracing
-can \emph{reconstruct} request-level metrics such as throughput and tail
-latency; we instead \emph{explain} slow requests by the scheduler and IRQ
-time behind them. Recording every scheduler event instead, as
-\texttt{perf sched} or ftrace do, is complete but expensive: our own
-per-event streaming mode costs 63--104$\times$ more tracer CPU per request
-than in-kernel accounting (\S\ref{sec:overhead}).
+\textbf{Request tracing.} Distributed tracing follows a request across
+services. Hindsight~\cite{zhang2023hindsight} records cheap trace data on
+every node and collects it only for edge cases such as slow requests. Its
+spans stop at the application, however, so the scheduler and interrupt
+time inside a span stays invisible. \sys{} supplies that missing kernel
+view for one service.
 
-\textbf{Request tracing and scheduling.} Hindsight~\cite{zhang2023hindsight}
-keeps cheap trace data and retrieves it only for edge cases such as slow
-requests, but its spans stop at the application boundary, so scheduler and
-interrupt time inside a span stay invisible. Caladan~\cite{fried2020caladan}
-uses queueing delay as a fast control signal to reallocate cores at
-microsecond scale. Our finding that queue length is the strongest tail
-predictor agrees with that choice, but Caladan replaces the Linux scheduler
-with its own runtime. ghOSt~\cite{humphries2021ghost} delegates Linux
-scheduling policy to user space, and its BPF extension shares a per-thread
-status table with user-space agents through an mmap-able BPF
-array~\cite{rhoden2022ghostbpf}. We reuse that mechanism for a different
-purpose: attributing latency rather than making scheduling decisions.
+\textbf{eBPF tools.} The bcc tools~\cite{bcc} build on the kernel's BPF
+interface~\cite{kernelbpf}: \texttt{runqlat} shows runqueue wait as a
+histogram per CPU, process or cgroup, and other tools cover softirq and
+off-CPU time. They sum over time, a task or a container, so their output
+cannot be matched to the latency of one request, and \texttt{runqlat} mixes
+waits after a wakeup with waits after a preemption.
+ghOSt~\cite{humphries2021ghost} moves Linux scheduling decisions to user
+space, and its BPF version shares a per-task status table with user space
+through a memory-mapped BPF array~\cite{rhoden2022ghostbpf}. We reuse that
+mechanism to attribute latency rather than to schedule. Tools that record
+every scheduler event, such as \texttt{perf sched} or ftrace, see
+everything but cost far more: our own per-event streaming mode uses
+63--104$\times$ more tracer CPU per request than in-kernel counting
+(\S\ref{sec:overhead}).
 
-\textbf{Gaps.} We found no low-overhead mechanism that, on an unmodified
-Linux kernel, tags each request with the scheduler and interrupt delay it
-(and the requests queued ahead of it) suffered, compares that tag against
-aggregate event counts and a queueing-only control, tests generalization to
-an unseen workload, and validates the attribution with one-at-a-time
-interventions. That is the gap this work addresses.
+\textbf{Gaps.} We found no low-overhead way, on an unmodified Linux kernel,
+to tag each request with the scheduler and interrupt delay that it and the
+requests queued ahead of it suffered, to compare that tag with system-wide
+event counts and a queue-length baseline, to test it on an unseen workload,
+and to check it with controlled one-at-a-time stressors. This paper
+addresses that gap.

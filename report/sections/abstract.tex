@@ -1,20 +1,22 @@
-Slow requests in latency-critical services are often slowed by the
-operating system rather than the application, yet standard eBPF tools only
-report aggregate scheduler and interrupt statistics. We present \sys{}, an
-eBPF pipeline that keeps per-thread preemption, wakeup, blocking and
-interrupt accounting in an mmap-able BPF map. The application snapshots it
-at request boundaries with plain memory loads, with no trap or ring-buffer
-record per request. \sys{} costs \ovNsKvShm--\ovNsCpuShm{}\,ns of tracer
-CPU per request, 47--53$\times$ less than uprobe-based windows, and closes
-an accounting identity within 5\,$\mu$s for at least \valWithin\% of
-requests. Across 336 runs of three workloads, a queue-length control
-explains most tails, and aligned kernel features detect them no better than
-aggregate counts. Their advantage on one held-out workload (PR-AUC
-\apAlLHeld{} vs.\ \apAgLHeld) did not survive rotating the held-out
-workload or a fresh replication: they only see tails caused inside the
-request window. Most of their signal is OS delay \emph{inherited} from
-requests queued ahead. One-at-a-time interventions confirm \hTwoRaw{} of
-\hTwoN{} pre-stated signatures (\hTwoHolm{} after Holm correction), and
-the misses expose an interrupt path we had not predicted. We also show how
-hypervisor noise distorts VM-based tail studies, and prepare a
+When a service answers a request slowly, the cause is often the operating
+system rather than the application: the request's thread waited for a CPU,
+was interrupted, or was blocked. Standard eBPF tools report such delays only
+as totals over time, so they cannot say which requests were hit. We present
+\sys{}, an eBPF tool that keeps per-thread counters of preemption wait,
+wakeup delay, blocked time and interrupt time in a BPF map that the
+application can map into its own memory. The application reads its counters
+at the start and end of each request with ordinary memory loads, so no
+kernel trap or ring-buffer record is needed per request. This costs
+\ovNsKvShm--\ovNsCpuShm{}\,ns of tracer CPU per request, 47--53$\times$ less
+than uprobe-based tracing, and the measured parts add up to the request's
+service time within 5\,$\mu$s for at least \valWithin\% of requests. Across
+336 runs of three workloads, queueing explained most slow requests, and
+per-request kernel data detected them no better than system-wide event
+counts. It did better on one unseen workload (PR-AUC \apAlLHeld{} vs.\
+\apAgLHeld), but not when another workload was held out or the runs were
+repeated, because it only sees delays inside the request's own time window.
+Much of its signal is delay \emph{inherited} from requests queued ahead.
+Adding one stressor at a time moved the predicted delay in \hTwoRaw{} of
+\hTwoN{} cases (\hTwoHolm{} after Holm correction). We also show how
+hypervisor noise distorts tail-latency studies in VMs, and prepare a
 \texttt{runqlat} patch for bcc.

@@ -1,22 +1,21 @@
 \section{Conclusion}
 \label{sec:conclusion}
-\sys{} shows that per-request attribution of OS-induced delay does not
-require a trap per request. Per-thread accounting kept by tracepoint
-programs and read through a shared BPF map costs about as much as plain
-event counters, and its accounting closes. The evaluation gives a more
-nuanced answer than our hypothesis. Within a known workload, queueing
-explains most tail requests, and any signal that tracks load (including
-aggregate counts) detects them. Request-aligned kernel telemetry did
-better on one held-out workload, but not when the held-out workload was
-rotated or the runs repeated with fresh seeds, so its value lies in naming
-the cause, not in detection. Controlled interventions moved
-the predicted delay component in \hTwoRaw{} of \hTwoN{} cases
-(\hTwoHolm{} after correcting for multiple tests). The
-remaining cases, together with the client-side receiver delay of the net
-workload, show where the method stops: OS delay on threads outside the
-request window, and host effects invisible to the guest. Future work is
-to extend windows across all threads a request touches, to model
-per-socket queues, and to repeat the study on bare metal. As a by-product,
-we prepared a patch that lets bcc's \texttt{runqlat} separate wakeup
-latency from preemption latency, the distinction our intervention results
-relied on.
+\sys{} shows that tagging each request with the OS delay it suffered does
+not need a kernel trap per request. Per-thread counters kept by tracepoint
+programs and read through a shared BPF map cost about as much as plain
+event counters, and the measured parts add up to the request's service
+time. The evaluation did not confirm our main hypothesis as stated. Within
+a known workload, queueing explains most slow requests, and any signal that
+follows the load, including system-wide counts, finds them. Per-request
+kernel data did better on one unseen workload, but not when we held out a
+different workload or repeated the runs with new seeds, so its value lies
+in naming the cause of a slow request rather than in detecting it.
+Controlled stressors moved the predicted delay in \hTwoRaw{} of \hTwoN{}
+cases (\hTwoHolm{} after correcting for multiple tests). The misses,
+together with the client-side delay in the net workload, show where the
+method stops: OS delay on threads outside the request window, and host
+effects the guest cannot see. Next steps are to follow a request across all
+the threads it touches, to model per-connection queues, and to repeat the
+study on bare metal. Along the way we prepared and tested a patch that lets
+bcc's \texttt{runqlat} separate waits after a wakeup from waits after a
+preemption, the distinction our intervention results depended on.

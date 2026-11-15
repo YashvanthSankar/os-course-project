@@ -1,62 +1,65 @@
 \section{Introduction}
 \label{sec:intro}
 
-\textbf{Domain.} Interactive services are judged by their slowest requests. When one user
-action fans out to many servers, the 99th-percentile latency of a single
-server becomes close to the median latency the user sees~\cite{dean2013tail}.
-Many of these slow requests are not caused by the application at all. The
-operating system delays them: a runnable thread waits behind another task,
-a burst of network softirqs steals the core in the middle of a request, a
-thread is migrated, or a write blocks on the storage stack. Li et
-al.~\cite{li2014tales} showed that such OS and hardware effects can stretch
-the tail of simple Linux servers by an order of magnitude beyond what
-queueing theory predicts.
+\textbf{Domain.} Users judge an interactive service by its slowest responses.
+When one user action fans out to many servers, a rare slow response on any
+one of them delays the whole action, so the tail of each server (its slowest
+1\%, the p99), not its average, sets the latency the user
+sees~\cite{dean2013tail}. Many slow requests are not the application's
+fault. The operating system delays them: the thread is ready to run but
+waits for a CPU, network interrupts take over the core in the middle of a
+request, the thread is moved to another CPU, or a write waits for the disk.
+Li et al.~\cite{li2014tales} showed that such effects can make the tail of
+simple Linux servers an order of magnitude worse than queueing theory
+predicts.
 
-eBPF makes it possible to observe these events in production at low cost.
-Small verified programs attach to stable kernel tracepoints and summarize
-what they see in kernel maps~\cite{kernelbpf}. The standard
-eBPF tools, however, report \emph{aggregates}: a runqueue-latency histogram
-for a process, softirq time per CPU, counts per
-second~\cite{bcc}. An operator who sees a p99 spike and a rise
-in context switches in the same minute still cannot say whether the
-switches \emph{caused} the slow requests, which requests they hit, or
-whether the requests were simply queued behind a load burst.
+eBPF lets us watch these events on a running system at low cost: small
+programs, checked by the kernel's verifier, run at kernel tracepoints and
+keep their results in kernel data structures called
+maps~\cite{kernelbpf}. The usual eBPF tools, however, report totals: a
+histogram of runqueue waits for a process, softirq time per CPU, counts per
+second~\cite{bcc}. An operator who sees the p99 rise together with context
+switches in the same minute still cannot tell whether the switches
+\emph{caused} the slow requests, which requests they hit, or whether those
+requests simply queued behind a burst of load.
 
-\textbf{Problem.} Given a service with measurable per-request latency, we
-want to (i)~detect tail requests, (ii)~attach to each one the kernel events
-that delayed it, and (iii)~determine which kernel indicators actually
-separate tail requests from normal ones. The tracing itself must add less
-than 5\% overhead, and the method must not claim causality from correlation
-alone. Three things make this hard. Requests last tens of microseconds, so
-even two kernel traps per request are expensive. A request is often delayed
-by events that happened to the requests \emph{ahead} of it in the queue.
-And on a virtualized test machine, the host can stall vCPUs in ways the
-guest kernel cannot observe.
+\textbf{Problem.} For a service whose requests can be timed one by one, we
+want to (i)~find the slow (tail) requests, (ii)~record for each one the
+kernel events that delayed it, and (iii)~find which kernel signals really
+separate slow requests from normal ones. Tracing may cost at most 5\% of
+throughput, and a correlation must not be reported as a cause. Three things
+make this hard. A request lasts only tens of microseconds, so even two
+switches into the kernel per request are expensive. A request is often
+delayed by something that happened to the requests \emph{ahead} of it in
+the queue. And in a virtual machine, the host can pause the virtual CPUs
+without the guest kernel noticing.
 
 \textbf{Contributions.}
 \begin{itemize}
-\item \sys{}, an eBPF pipeline that keeps per-thread scheduler and IRQ
-accounting (preemption wait, wakeup delay, blocked time, interrupt time
-charged to the interrupted thread) in an mmap-able BPF map (a mechanism ghost-bpf uses for
-scheduling~\cite{rhoden2022ghostbpf}; we apply it to attribution). The application
-reads it at request boundaries with plain memory loads, so no trap or ring
-buffer record is needed per request. It costs \ovNsKvShm--\ovNsCpuShm{}\,ns
-of tracer CPU per request, 47--53$\times$ less than uprobe-based windows
-(\S\ref{sec:overhead}).
-\item A per-request latency decomposition that includes OS delay
-\emph{inherited} from queued-ahead requests, checked by an accounting
-identity that holds within 5\,$\mu$s for at least \valWithin\% of requests
-in every run.
-\item An evaluation over three workloads, three loads and five repetitions.
-It compares aligned per-request features against aggregate event counts and
-a queueing-only control on held-out workloads and fresh runs (H1), and
-validates the attribution with one-at-a-time interventions (H2).
-\item Two practical outcomes: a noise gate that exposes hypervisor
-interference in VM-based latency studies, and a patch, prepared for upstream bcc, that makes
-\texttt{runqlat} separate wakeup latency from preemption latency.
+\item \sys{}, an eBPF tool that keeps per-thread counters of preemption
+wait, wakeup delay, blocked time and interrupt time (charged to the thread
+that was interrupted) in a BPF map that user space can map into memory.
+ghOSt's BPF scheduler shares per-task state through the same kind of
+map~\cite{rhoden2022ghostbpf}; we use it to explain latency instead. The
+application copies its own counters at the start and end of each request
+with plain memory loads, with no system call or trap. This costs
+\ovNsKvShm--\ovNsCpuShm{}\,ns of tracer CPU per request, 47--53$\times$ less
+than uprobes (\S\ref{sec:overhead}).
+\item A breakdown of each request's latency that includes delay
+\emph{inherited} from requests queued ahead of it, checked by an accounting
+identity (Eq.~\eqref{eq:identity}) that holds within 5\,$\mu$s for at least
+\valWithin\% of requests in every run.
+\item An evaluation over three workloads, three load levels and five
+repetitions. It compares per-request kernel data with system-wide event
+counts and with a queue-length baseline, on a workload the models never saw
+and on fresh runs (H1), and checks the attribution by adding one stressor
+at a time (H2).
+\item Two by-products: a noise gate that detects hypervisor interference in
+VM experiments, and a tested patch for bcc's \texttt{runqlat} that separates
+waits after a wakeup from waits after a preemption.
 \end{itemize}
 
-\textbf{Hypotheses.} \textbf{H1}: kernel telemetry aligned to request
-windows separates tail requests from normal ones better than aggregate
-event counts. \textbf{H2}: each controlled intervention moves the matching
-component of the attribution.
+\textbf{Hypotheses.} \textbf{H1}: kernel data aligned to each request's
+time window separates slow requests from normal ones better than
+system-wide event counts. \textbf{H2}: each controlled stressor raises the
+delay component we predicted for it.

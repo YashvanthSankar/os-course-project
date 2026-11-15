@@ -1,200 +1,218 @@
 \section{Experimental Results}
 \label{sec:results}
 
-We ran 336 runs: 45 calibration, 90 main, 62 overhead,
-70 intervention, 16 A/B, 8 receiver-placement, and 45 after review (36
-validation, 9 fresh net). The noise gate waits rather than rejects; of the
-first 318 runs \nwWaited{} waited (median \nwMed\,s, longest
-\nwMax\,min). Median platform noise was \noiseMed\% of vCPU time.
+We ran 336 runs: 45 calibration, 90 main, 62 overhead, 70 intervention,
+16 A/B, 8 receiver-placement, and 45 added after review (36 validation,
+9 fresh net). The noise gate waits for a quiet host instead of discarding
+runs; of the first 318 runs, \nwWaited{} had to wait (median
+\nwMed\,s, longest \nwMax\,min). Median platform noise was \noiseMed\% of
+vCPU time.
 
-\subsection{Measurement validity}
-In all \valRuns{} traced runs every request received kernel features
-(coverage \valCoverage\%), there were no slot collisions, and
-\valDrops{} events were lost. The accounting identity closed within
-5\,$\mu$s for at least \valWithin\% of requests in every run (median
-residual 167\,ns). For a request that never leaves the CPU this is close to true
-by construction; the real test is the \idCampSwShare\% of requests switched
-out inside their window. For those it held for \idCampSwMed\% of requests in
-the median run, but only \idCampSwMin\% in the worst. Part of that gap was a
-torn read (on-CPU timestamp and total read as two loads); with a retry, 18
-validation runs reached at least \idFixOneSwMin\%. The switch-out test
-also ignored the \texttt{preempt} flag. With that fixed, a rerun found
-none of \preAll{} preemptions hitting a thread already set to sleep (the
-kernel preempts voluntarily), so the campaign data are unaffected.
-Generator lateness was below 60\,$\mu$s at p99 in \genOk{} of
-\genAll{} main runs; the worst run reached \genMax.
+\subsection{Are the measurements correct?}
+In all \valRuns{} traced runs every request received kernel data (coverage
+\valCoverage\%), no two threads shared a slot, and \valDrops{} events were
+lost. Eq.~\eqref{eq:identity} held within 5\,$\mu$s for at least
+\valWithin\% of requests in every run (median error 167\,ns). For a request
+that never leaves the CPU this is nearly automatic; the real test is the
+\idCampSwShare\% of requests that were switched out during their window.
+For those, the identity held for \idCampSwMed\% of requests in the median
+run but only \idCampSwMin\% in the worst. Part of that gap was a bug: the
+application read the on-CPU timestamp and total as two separate loads, so a
+switch between them was counted twice. With a retry, 18 validation runs
+reached at least \idFixOneSwMin\%. A reviewer also found that our
+switch-out test ignored the kernel's \texttt{preempt} flag. After the fix,
+a rerun saw none of \preAll{} preemptions hit a thread that was about to
+sleep (this kernel preempts only at safe points), so the earlier data are
+unaffected. The generator was less than 60\,$\mu$s late at p99 in \genOk{}
+of \genAll{} main runs; the worst run was \genMax{} late.
 
 \textbf{Baseline latency.} Untraced at mid load, p50/p95/p99 are
 \latCpuMidPFifty/\latCpuMidPNinetyFive/\latCpuMidPNinetyNine\,$\mu$s (cpu),
 \latKvMidPFifty/\latKvMidPNinetyFive/\latKvMidPNinetyNine\,$\mu$s (kv) and
-\latNetMidPFifty/\latNetMidPNinetyFive/\latNetMidPNinetyNine\,$\mu$s (net);
-the run-to-run CV of p99 is \cvMin--\cvMax{}, so we report medians of five
-runs. The share of tail latency per delay component varies across the
-five runs of a condition by a median SD of \stabMed{} points (at most
-\stabMax, unstressed kv).
+\latNetMidPFifty/\latNetMidPNinetyFive/\latNetMidPNinetyNine\,$\mu$s (net).
+The p99 of identical runs varies widely (coefficient of variation
+\cvMin--\cvMax), so we report medians of five runs. The attribution is
+steadier: the share of tail latency given to each component varies across
+the five runs of a condition by a median of \stabMed{} percentage points (at
+most \stabMax, unstressed kv).
 
-\textbf{Collapse episodes.} Some runs, traced or not, contain episodes of
-a few hundred ms in which the queue grows to tens of ms (shelves in
-Fig.~\ref{fig:latency}). In the worst kv run, service time doubled for
-600\,ms with no scheduler, IRQ or blocking events, consistent with the host
-slowing the vCPU. One episode raised a calibration p99 to \thrMaxCpuMid{}
-(cpu-mid; five-run median \thrCpuMid), hence the median threshold.
+\textbf{Collapse episodes.} Some runs, traced or not, contain episodes of a
+few hundred milliseconds in which the queue grows to tens of milliseconds
+(shelves in Fig.~\ref{fig:latency}). In the worst kv run, the
+service time doubled for 600\,ms with no scheduler, interrupt or blocking
+events at all, which fits the host slowing down the vCPU. One such episode
+raised a single calibration run's p99 to \thrMaxCpuMid{} (cpu-mid; five-run
+median \thrCpuMid), which is why the threshold is a median of five runs.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.88\textwidth]{figures/fig_latency.pdf}
-\caption{Latency CCDFs pooled over 5 runs per condition (solid: untraced;
-dashed: \sys). Shelves are collapse episodes in individual runs.}
+\includegraphics[width=0.85\textwidth]{figures/fig_latency.pdf}
+\caption{Latency CCDFs (fraction of requests slower than $x$), pooled over
+5 runs per condition. Solid: untraced; dashed: \sys. Shelves are collapse
+episodes in individual runs.}
 \label{fig:latency}
 \end{figure*}
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.88\textwidth]{figures/fig_pr.pdf}
+\includegraphics[width=0.85\textwidth]{figures/fig_pr.pdf}
 \caption{Precision--recall curves for tail-request detection. Grey line:
-base rate (cpu/kv test includes stressed runs).}
+base rate, the score of a random ranking (the cpu/kv test set includes
+stressed runs).}
 \label{fig:pr}
 \end{figure*}
 
 \subsection{Overhead}
 \label{sec:overhead}
 In closed loop, throughput varied by up to $\pm$17\% between identical
-untraced runs, so the throughput differences in Fig.~\ref{fig:overhead}
-are within noise. Maps take \memCnt\,MB, or \memRb\,MB
-with the ring buffer, and no events were dropped. Tracer CPU per request is the
-stable measure. Shared counters cost \ovNsCpuShm{}\,ns (cpu) and
-\ovNsKvShm{}\,ns (kv) per request, about as much as the counters-only
-baseline. Uprobe windows cost \ovNsKvAttrib--\ovNsCpuAttrib{}\,ns
-\emph{before} the cost of the traps themselves, and per-event streaming
-costs up to \ovNsCpuStream{}\,ns: 47--53$\times$ and 63--104$\times$ the
-cost of shared counters. In open loop, the interleaved A/B
-test (\abRuns{} runs per side, kv mid) found no measurable effect: median
-p50 \abPfiftyNone{} vs.\ \abPfiftyShm{}\,$\mu$s ($p{=}\abPfiftyP$), median
-p99 \abPninetyNone{} vs.\ \abPninetyShm{} ($p{=}\abPninetyP$), and
-\abCollNone{} vs.\ \abCollShm{} collapse runs (Fisher $p{=}\abCollP$).
-Eight runs per side rule out only large effects; the per-request cost,
-about 0.2\% (cpu) and 0.5\% (kv) of service time, is the firmer evidence.
+untraced runs, so the differences in Fig.~\ref{fig:overhead} are within
+noise. A steadier measure is the tracer's CPU time per request. Shared
+counters cost \ovNsCpuShm{}\,ns (cpu) and \ovNsKvShm{}\,ns (kv), about as
+much as counting events only. Uprobe windows cost
+\ovNsKvAttrib--\ovNsCpuAttrib{}\,ns even before the traps themselves, and
+per-event streaming up to \ovNsCpuStream{}\,ns: 47--53$\times$ and
+63--104$\times$ the cost of shared counters. The BPF maps take
+\memCnt\,MB (\memRb\,MB with the ring buffer), and no events were dropped.
+In open loop, an interleaved A/B test (\abRuns{} untraced and \abRuns{}
+traced runs, kv mid) was inconclusive: median p50 \abPfiftyNone{} vs.\
+\abPfiftyShm{}\,$\mu$s ($p{=}\abPfiftyP$), median p99 \abPninetyNone{} vs.\
+\abPninetyShm{} ($p{=}\abPninetyP$), and \abCollNone{} vs.\ \abCollShm{}
+runs with a collapse episode (Fisher $p{=}\abCollP$), both on the traced
+side. Eight runs per side rule out only large effects. The firmer evidence
+for the 5\% budget is the cost per request: about 0.2\% (cpu) and 0.5\% (kv)
+of the service time.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\columnwidth]{figures/fig_overhead.pdf}
-\caption{Closed-loop throughput loss vs.\ untraced (median of 5 runs, bars:
-bootstrap 95\% CI; dashed: 5\% budget). Tracer CPU per request (BPF run
-time + collector, excluding uprobe traps) is given in the text.}
+\caption{Closed-loop throughput loss vs.\ untraced (median of 5 runs; bars:
+bootstrap 95\% CI; dashed: 5\% budget). Tracer CPU per request is given in
+the text.}
 \label{fig:overhead}
 \end{figure}
 
-\subsection{Tail detection (H1)}
+\subsection{Detecting tail requests (H1)}
 \label{sec:h1}
-Table~\ref{tab:detect} and Fig.~\ref{fig:pr} show a ceiling and three
-findings. The ceiling: \noSigTest\% of the test tails (\noSigHeld\% on net)
-carry no OS-delay signal, i.e.\ no own or inherited scheduler, IRQ or
-blocking delay of 10\,$\mu$s or more (\noSigFloorFive--\noSigFloorTwenty\% of all
-tails for floors of 5--20\,$\mu$s). Their delay is pure queueing or host
-time, so no kernel-feature model can rank them: the precision cliff near
-0.45 recall in Fig.~\ref{fig:pr}. \textbf{(1) Queueing dominates
-in-distribution.} The queue-length control reaches PR-AUC \apQLTest. It
-counts requests completed \emph{during} the wait, so it is only known
-afterwards: a diagnostic reference for how much of the tail is queueing,
-not a predictor. All H1 features are complete only at request end, so H1
-tests diagnosis; only early warning (below) is predictive. \textbf{(2) In-distribution, aligned telemetry is not
-better than aggregate counts}: \apAlFTest{} vs.\ \apAgFTest{} (forest),
-\apAlLTest{} vs.\ \apAgLTest{} (logistic); 5\,ms aggregates reach
-\ablAggFiveTest{} (Fig.~\ref{fig:ablation}). \textbf{(3) Generalization
+Table~\ref{tab:detect} and Fig.~\ref{fig:pr} show one limit and three
+findings. \textbf{The limit:} \noSigTest\% of the test tail requests
+(\noSigHeld\% on net) carry no OS-delay signal at all, i.e.\ no own or
+inherited scheduler, interrupt or blocking delay of 10\,$\mu$s or more
+(\noSigFloorFive--\noSigFloorTwenty\% of all tails for thresholds of
+5--20\,$\mu$s). Their delay is pure queueing or host time, so no model built
+on kernel data can rank them. This causes the sharp drop in precision near
+0.45 recall in Fig.~\ref{fig:pr}.
+
+\textbf{(1) Within a known workload, queueing explains most tails.} The
+queue-length control reaches a PR-AUC of \apQLTest. It counts requests that
+finished \emph{during} the wait, so it is only known afterwards: it tells us
+how much of the tail is queueing, not how to predict it. All H1 features
+are complete only when the request ends, so H1 measures diagnosis; only the
+early-warning test below is a prediction. \textbf{(2) Within a known
+workload, per-request kernel data is no better than aggregate counts}:
+\apAlFTest{} vs.\ \apAgFTest{} (forest) and \apAlLTest{} vs.\ \apAgLTest{}
+(logistic), and 5\,ms aggregates reach \ablAggFiveTest{}
+(Fig.~\ref{fig:ablation}). \textbf{(3) On an unseen workload, the result
 depends on where the tails come from.} With net held out (base rate
 \baseHeld\%), aligned features reach about twice the PR-AUC of aggregates:
-\apAlFHeld{}, \apAlLHeld{} and \apRuleHeld{} (forest, logistic, rule)
-against \apAgFHeld, \apAgLHeld{} and \apAggRuleHeld. Rotation does not
-confirm this: held-out cpu gives \rotCpuAlF{} vs.\ \rotCpuAgF{} (forest) but
-\rotCpuAlL{} vs.\ \rotCpuAgL{} (logistic), held-out kv \rotKvAlF{} vs.\
-\rotKvAgF{} and \rotKvAlL{} vs.\ \rotKvAgL. At the F1-optimal threshold
-the aligned forest raises \faKAlMin--\faKAlMax{}k false alarms per minute,
-the aggregate forest \faKAgMin--\faKAgMax{}k, against 0.4--4M requests per
-minute.
-On \freshRuns{} fresh net runs with unused seeds and no stressor (base
-rate \freshBasePct\%), aligned features drop to \freshAlL{} against
-\freshAgL{} for aggregates. The source of the tails explains the
-difference: in the held-out net set, which contains the CPU-hog runs, only
-\noSigHeld\% of tails lack an OS signal; in the fresh runs 69--99\% do,
-because they arise on the client's receive path (below). Aligned telemetry
-detects OS-induced tails in unseen workloads, but not tails produced
-outside the request window, so \textbf{H1 is not supported as a general
-claim}.
+\apAlFHeld, \apAlLHeld{} and \apRuleHeld{} (forest, logistic, rule) against
+\apAgFHeld, \apAgLHeld{} and \apAggRuleHeld. Holding out the other
+workloads does not confirm this: for cpu the forest gives \rotCpuAlF{} vs.\
+\rotCpuAgF{} but logistic regression \rotCpuAlL{} vs.\ \rotCpuAgL, and for
+kv \rotKvAlF{} vs.\ \rotKvAgF{} and \rotKvAlL{} vs.\ \rotKvAgL. On
+\freshRuns{} fresh net runs with new seeds and no stressor (base rate
+\freshBasePct\%), aligned features fall to \freshAlL, below the \freshAgL{}
+of aggregates. The reason is where the tails arise. In the held-out net
+set, which includes the CPU-hog runs, only \noSigHeld\% of tails lack an OS
+signal; in the fresh runs 69--99\% do, because they come from the client's
+receive path (below). Per-request kernel data finds OS-caused tails in
+unseen workloads, but not tails produced outside the request window, so
+\textbf{H1 does not hold in general}. At the F1-optimal threshold, the
+aligned forest raises \faKAlMin--\faKAlMax{}k false alarms per minute and
+the aggregate forest \faKAgMin--\faKAgMax{}k, out of 0.4--4 million
+requests per minute.
 
-Without \emph{inherited} delay, held-out PR-AUC
-drops from \ablAllHeld{} to \ablNoInhHeld{}: most tail requests were
-delayed by OS events that happened to the requests ahead of them, not to
-themselves. Scheduler features carry the most information (without them:
-\ablNoSchedHeld); interrupt and blocking features add little on their own.
-
+\textbf{Inherited delay matters.} Without it, held-out PR-AUC falls from
+\ablAllHeld{} to \ablNoInhHeld: most slow requests were delayed by OS events
+that hit the requests ahead of them, not themselves. Scheduler features
+carry the most information (without them: \ablNoSchedHeld); interrupt and
+blocking features add little on their own.
 
 \input{generated/tab_detect}
 
-\textbf{Why net is hard.} Net tails arise on the client: the response path
-($t_\mathrm{done}-t_\mathrm{end}$) dominates because the receive thread
-shares CPU~3 with the spinning generator. Moving it to CPU~2 cut the
-response-path p99 from \rcvGenRespP{} to \rcvOwnRespP, but total p99 stayed
-(\rcvGenP{} vs.\ \rcvOwnP) as the server side rose to \rcvOwnServer: the
-delay moves with the co-located thread, outside the request window.
+\textbf{Why net is hard.} Net tails arise on the client. Most of their
+latency is on the response path ($t_\mathrm{done}-t_\mathrm{end}$), because
+the client's receive thread shares CPU~3 with the spinning generator.
+Moving the receiver to CPU~2 cut the response-path p99 from \rcvGenRespP{}
+to \rcvOwnRespP, but total p99 stayed the same (\rcvGenP{} vs.\ \rcvOwnP)
+because the server-side p99 rose to \rcvOwnServer: the receiver now
+competes with a worker. The delay follows the co-located thread,
+outside the request window.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.95\columnwidth]{figures/fig_ablation.pdf}
-\caption{Ablation (forest PR-AUC): removing feature families or
-inheritance, and the aggregation window of the count baseline.}
+\caption{Ablation (forest PR-AUC): removing feature families or inherited
+delay, and changing the window of the aggregate baseline.}
 \label{fig:ablation}
 \end{figure}
 
-\textbf{Early warning.} Telemetry of a 10\,ms window predicts a tail
-episode in the next one with PR-AUC \ewApTest{} (test) and \ewApHeld{}
-(net), above repeating the current state (\ewPersTest, \ewPersHeld).
+\textbf{Early warning.} The kernel data of one 10\,ms window predicts
+whether a tail episode starts in the next window with PR-AUC \ewApTest{}
+(test) and \ewApHeld{} (net). This beats assuming the next window looks
+like the current one (\ewPersTest, \ewPersHeld) and the base rate, the
+fraction of windows followed by an episode (\ewBasePctTest\%,
+\ewBasePctHeld\%).
 
-\subsection{Interventions (H2)}
+\subsection{Controlled interventions (H2)}
 \label{sec:h2}
-Fig.~\ref{fig:signature} gives each intervention's effect on each delay
-type. \textbf{\hTwoRaw{} of \hTwoN{} predictions hold} at $p<0.05$
-(one-sided Mann--Whitney, 5 vs.\ 5 runs, smallest possible $p$ 0.004);
-\hTwoHolm{} survive Holm correction for \hTwoN{} tests. The CPU hog raises
-mean preemption wait per request
-\sigCpuHogRunq$\times$ (cpu, \absCpuHogRunqCtl$\to$\absCpuHogRunqInt\,$\mu$s),
-\sigKvHogRunq$\times$ (kv, \absKvHogRunqCtl$\to$\absKvHogRunqInt\,$\mu$s) and
-\sigNetHogRunq$\times$ (net, \absNetHogRunqCtl$\to$\absNetHogRunqInt\,$\mu$s),
-and wakeup delay 15--46$\times$
-(large ratios because the baseline is tens of ns); IRQ time and blocking do
-not change. Moving the workers off the hog cuts preemption wait to
-\sigCpuMoveRunq$\times$ (cpu, \absCpuMoveRunqCtl$\to$\absCpuMoveRunqInt\,$\mu$s) and
-\sigKvMoveRunq$\times$ (kv, \absKvMoveRunqCtl$\to$\absKvMoveRunqInt\,$\mu$s).
-The I/O writer raises kv blocking \sigKvIoBlk$\times$
-(\absKvIoBlkCtl$\to$\absKvIoBlkInt\,$\mu$s) and IRQ time \sigKvIoIrq$\times$.
-Not significant after correction ($p{=}0.048$): moving the kv workers,
-and the flood on cpu (IRQ time +0.16\,$\mu$s per request).
-The two misses are informative. The softirq flood had no significant
-effect on kv (\sigKvFloodIrq$\times$ IRQ time): kv workers are often
-asleep, so steered softirqs mostly land on idle CPUs. For the cpu workload,
-which never blocks, the I/O writer showed up as \sigCpuIoIrq$\times$
-\emph{interrupt} time instead (\absCpuIoIrqCtl$\to$\absCpuIoIrqInt\,$\mu$s), because block-completion IRQs land on the
-worker CPUs. That is a cause our prediction (blocked) did not anticipate,
-and one that only per-thread IRQ charging can reveal.
+Fig.~\ref{fig:signature} shows how each stressor changed each kind of
+delay. \textbf{\hTwoRaw{} of \hTwoN{} predictions hold} at $p<0.05$
+(one-sided Mann--Whitney test, 5 vs.\ 5 runs; with five runs per side the
+smallest possible $p$ is 0.004), and \hTwoHolm{} still hold after Holm
+correction for \hTwoN{} tests. The CPU hog raises the mean preemption wait
+per request \sigCpuHogRunq$\times$ (cpu,
+\absCpuHogRunqCtl$\to$\absCpuHogRunqInt\,$\mu$s), \sigKvHogRunq$\times$ (kv,
+\absKvHogRunqCtl$\to$\absKvHogRunqInt\,$\mu$s) and \sigNetHogRunq$\times$
+(net, \absNetHogRunqCtl$\to$\absNetHogRunqInt\,$\mu$s), and the wakeup delay
+15--46$\times$; the ratios are large because the baseline is only tens of
+nanoseconds. Interrupt and blocked time do not change. Moving the workers
+off the hog's CPU cuts the preemption wait to \sigCpuMoveRunq$\times$ (cpu,
+\absCpuMoveRunqCtl$\to$\absCpuMoveRunqInt\,$\mu$s) and \sigKvMoveRunq$\times$
+(kv, \absKvMoveRunqCtl$\to$\absKvMoveRunqInt\,$\mu$s). The I/O writer raises
+kv blocked time \sigKvIoBlk$\times$
+(\absKvIoBlkCtl$\to$\absKvIoBlkInt\,$\mu$s) and interrupt time
+\sigKvIoIrq$\times$. Two results are not significant after correction
+($p{=}0.048$): moving the kv workers, and the softirq flood on cpu (only
++0.16\,$\mu$s of interrupt time per request).
+
+The two misses are useful. The softirq flood had no clear effect on kv
+(\sigKvFloodIrq$\times$ interrupt time): kv workers are often asleep, so the
+steered softirqs mostly land on idle CPUs. For the cpu workload, which never
+blocks, the I/O writer showed up as \sigCpuIoIrq$\times$ more
+\emph{interrupt} time instead
+(\absCpuIoIrqCtl$\to$\absCpuIoIrqInt\,$\mu$s), because the disk-completion
+interrupts land on the worker CPUs. Our prediction (blocked time) missed
+this cause, and only charging interrupt time to the interrupted thread
+could reveal it.
 
 \begin{figure}[!htb]
 \centering
-\includegraphics[width=0.9\columnwidth]{figures/fig_signature.pdf}
+\includegraphics[width=0.86\columnwidth]{figures/fig_signature.pdf}
 \caption{Intervention signatures: fold change of mean per-request delay
-vs.\ the matching control (* two-sided Mann--Whitney $p<0.05$, unlike
-the one-sided tests in the text;
-$\cdot$: both $<$50\,ns).}
+vs.\ the matching control (* two-sided Mann--Whitney $p<0.05$, unlike the
+one-sided tests in the text; $\cdot$: both $<$50\,ns).}
 \label{fig:signature}
 \end{figure}
 
 \subsection{Threats to validity}
-The 10\,$\mu$s floor and the queue-length control were chosen on early
-smoke-test data that included net runs, so net was not fully unseen while
-the features were designed; the fresh net runs are the clean test, and
-there H1 failed. All results come from one 4-vCPU VM, one host and one
-kernel (6.8). Host
-preemption and slowdown of vCPUs are invisible to the guest. The noise gate
-bounds them, but they remain the likely source of unattributed collapse
-episodes. The workloads are synthetic. The inheritance rule assumes a
-shared FIFO queue and does not model per-socket queues (net). Nested hard
-IRQs are counted twice, and loopback NET\_RX work of a net thread counts as
-interrupt time. Shared counters need two calls in the application; unmodified binaries must
-use uprobe windows.
+We chose the 10\,$\mu$s threshold and the queue-length control on early
+test data that included net runs, so net was not fully unseen while we
+designed the features; the fresh net runs are the clean test, and there H1
+failed. All results come from one 4-vCPU VM on one host with one kernel
+(6.8). The guest cannot see the host pausing or slowing its vCPUs; the
+noise gate limits this, but it remains the likely cause of the collapse
+episodes we cannot explain. The workloads are synthetic. The
+inherited-delay rule assumes one shared FIFO queue and does not model
+per-connection queues (net). Hard interrupts nested inside a softirq are
+counted twice, and on loopback a net thread's own receive processing counts
+as interrupt time. Shared counters need two calls in the application;
+unmodified programs must use uprobe windows.
