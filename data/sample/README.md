@@ -5,7 +5,7 @@
 | Name | `tailtag_raw_data.tar.zst` (TailTag raw experiment data) |
 | Size | 4.4 GB compressed (4,415,103,004 bytes); about 20 GB unpacked; 336 runs |
 | Source | our own experiments, produced by `code/scripts/experiment.py` (no external dataset) |
-| Download | Google Drive: https://drive.google.com/drive/folders/1IVK3r3uroNqU_zwaOjeYwiymoN8KJPTw?usp=share_link (stored as 4 parts, `.part1` to `.part4`, for faster transfer; rejoin with `cat tailtag_raw_data.tar.zst.part1 tailtag_raw_data.tar.zst.part2 tailtag_raw_data.tar.zst.part3 tailtag_raw_data.tar.zst.part4 > tailtag_raw_data.tar.zst`, or see `README_how_to_rejoin.txt` in the folder) |
+| Download | Google Drive: https://drive.google.com/drive/folders/1IVK3r3uroNqU_zwaOjeYwiymoN8KJPTw?usp=share_link |
 | Checksum | SHA-256 `668d096981e4fab57d59fcc6694d261638905369f4944c9bea45317d415feda5` |
 | Use | see section 4 below |
 
@@ -62,7 +62,7 @@ intervals), not byte for byte.
 |---|---|
 | Archive | `tailtag_raw_data.tar.zst` (4.4 GB, zstd, all 336 runs) |
 | SHA-256 | `668d096981e4fab57d59fcc6694d261638905369f4944c9bea45317d415feda5` |
-| Download | https://drive.google.com/drive/folders/1IVK3r3uroNqU_zwaOjeYwiymoN8KJPTw?usp=share_link (download the 4 parts and rejoin them as described in the table at the top; the archive is also on the pen drive we bring to the presentation) |
+| Download | https://drive.google.com/drive/folders/1IVK3r3uroNqU_zwaOjeYwiymoN8KJPTw?usp=share_link (open the folder and download the file; it is also on the pen drive we bring to the presentation) |
 | Check | `shasum -a 256 tailtag_raw_data.tar.zst` must print the value above |
 | Unpack | `zstd -dc tailtag_raw_data.tar.zst \| tar -x` (creates `raw/<set>/<run>/`) |
 | Use | place it as `code/data/raw/` and run only the analysis steps of the reproducibility guide (section 5); no experiments need to be rerun |

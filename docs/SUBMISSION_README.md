@@ -120,6 +120,5 @@ compressed), so it is too large for this archive.
 3. the full dataset can be regenerated with `sudo NOISE_LIMIT=5 bash scripts/run_all.sh`
    (fixed seeds and configuration, about 3.5 hours);
 4. the full compressed archive (`tailtag_raw_data.tar.zst`, 4.4 GB) is on
-   Google Drive as 4 parts (rejoin instructions in the folder), with a
-   SHA-256 checksum to verify it:
+   Google Drive, with a SHA-256 checksum to verify it:
    https://drive.google.com/drive/folders/1IVK3r3uroNqU_zwaOjeYwiymoN8KJPTw?usp=share_link
