@@ -188,6 +188,13 @@ Environment overrides: `TL_DURATION` (seconds per run, default 15),
 
 ## 6. Data dictionary
 
+**Full raw data (all 336 runs):** `tailtag_raw_data.tar.zst`, 4.4 GB
+compressed, about 20 GB unpacked, produced by our own experiments. Download:
+https://drive.google.com/drive/folders/1IVK3r3uroNqU_zwaOjeYwiymoN8KJPTw?usp=share_link
+(SHA-256 `668d096981e4fab57d59fcc6694d261638905369f4944c9bea45317d415feda5`).
+Unpack with `zstd -dc tailtag_raw_data.tar.zst | tar -x` and place the
+resulting `raw/` folder as `code/data/raw/` to rerun only the analysis.
+
 Each run directory `data/raw/<experiment>/<run_id>/` contains:
 
 **cond.json:** experiment, workload, load, rate (req/s; 0 = closed loop),

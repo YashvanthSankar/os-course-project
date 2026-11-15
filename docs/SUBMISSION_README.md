@@ -119,5 +119,6 @@ compressed), so it is too large for this archive.
    `supplementary/experimental_results/`;
 3. the full dataset can be regenerated with `sudo bash scripts/run_all.sh`
    (fixed seeds and configuration, about 3.5 hours);
-4. the compressed archive is available from the team on request, with a
-   SHA-256 checksum to verify it.
+4. the full compressed archive (`tailtag_raw_data.tar.zst`, 4.4 GB) is on
+   Google Drive, with a SHA-256 checksum to verify it:
+   https://drive.google.com/drive/folders/1IVK3r3uroNqU_zwaOjeYwiymoN8KJPTw?usp=share_link

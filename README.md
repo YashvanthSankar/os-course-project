@@ -58,6 +58,6 @@ All four members contributed equally. Main areas of each member:
 ## Data
 
 - **Sample run** (in the repo): [data/sample/](data/sample/) — one complete raw run, gzip-compressed.
-- **Full raw data** (~20 GB, 336 runs): Archive `tailtag_raw_data.tar.zst`, 4.4 GB, SHA-256 `668d096981e4fab57d59fcc6694d261638905369f4944c9bea45317d415feda5`.
+- **Full raw data** (~20 GB, 336 runs): [Google Drive](https://drive.google.com/drive/folders/1IVK3r3uroNqU_zwaOjeYwiymoN8KJPTw?usp=share_link). Archive `tailtag_raw_data.tar.zst`, 4.4 GB, SHA-256 `668d096981e4fab57d59fcc6694d261638905369f4944c9bea45317d415feda5`.
 - **Processed results** (every table and figure in the report): [results/](results/)
 - **Data dictionary:** [docs/REPRODUCE.md](docs/REPRODUCE.md) §6
