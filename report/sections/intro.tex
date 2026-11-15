@@ -40,7 +40,8 @@ We set out to answer two hypotheses. \textbf{H1}: kernel data aligned to
 each request's time window separates slow requests from normal ones better
 than system-wide event counts. \textbf{H2}: each controlled stressor raises
 the delay component we predicted for it. To test them, the project has four
-objectives, each with the outcome we reached:
+objectives. Each is also a contribution of this work, listed with the
+outcome we reached:
 \begin{itemize}
 \item \textbf{Build a low-overhead tracer.} \sys{} is an eBPF tool that keeps per-thread counters of preemption
 wait, wakeup delay, blocked time and interrupt time (charged to the thread
