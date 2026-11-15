@@ -1,5 +1,16 @@
 \documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
+% IEEEtran expects Times. pdfLaTeX gets it from the class; XeLaTeX/Tectonic
+% has no Times in the TU encoding and would silently fall back to upright
+% Latin Modern (no bold or italic), so load the TeX Gyre Times/Courier clones.
+\usepackage{iftex}
+\ifTUTeX
+  \usepackage{fontspec}
+  \setmainfont{texgyretermes}[Extension=.otf, UprightFont=*-regular,
+    BoldFont=*-bold, ItalicFont=*-italic, BoldItalicFont=*-bolditalic]
+  \setmonofont{texgyrecursor}[Extension=.otf, UprightFont=*-regular,
+    BoldFont=*-bold, ItalicFont=*-italic, BoldItalicFont=*-bolditalic]
+\fi
 \usepackage{cite}
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}

@@ -25,9 +25,9 @@ for pi, p in enumerate(pages):
     words = re.findall(r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]*)</word>', p)
     for i, (x0, y0, x1, y1, t) in enumerate(words):
         nxt = words[i + 1][4] if i + 1 < len(words) else ""
-        if t in ("I.", "II.", "III.", "IV.", "V.") and nxt in names:
-            marks.append((names[nxt], pi, float(x0), float(y0)))
-        if t == "References" and pi == len(pages) - 1:
+        if t in ("I.", "II.", "III.", "IV.", "V.") and nxt.title() in names:
+            marks.append((names[nxt.title()], pi, float(x0), float(y0)))
+        if t.title() == "References" and pi == len(pages) - 1:
             marks.append(("Refs", pi, float(x0), float(y0)))
         if t.startswith("Abstract") and pi == 0 and not marks:
             marks.append(("Abstract", pi, float(x0), float(y0)))

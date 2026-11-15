@@ -37,7 +37,7 @@ guest kernel cannot observe.
 \begin{itemize}
 \item \sys{}, an eBPF pipeline that keeps per-thread scheduler and IRQ
 accounting (preemption wait, wakeup delay, blocked time, interrupt time
-charged to the interrupted thread) in an mmap-able BPF map. (a mechanism ghost-bpf uses for
+charged to the interrupted thread) in an mmap-able BPF map (a mechanism ghost-bpf uses for
 scheduling~\cite{rhoden2022ghostbpf}; we apply it to attribution). The application
 reads it at request boundaries with plain memory loads, so no trap or ring
 buffer record is needed per request. It costs \ovNsKvShm--\ovNsCpuShm{}\,ns
@@ -52,8 +52,8 @@ It compares aligned per-request features against aggregate event counts and
 a queueing-only control on held-out workloads and fresh runs (H1), and
 validates the attribution with one-at-a-time interventions (H2).
 \item Two practical outcomes: a noise gate that exposes hypervisor
-interference in VM-based latency studies, and an upstream patch to bcc's
-\texttt{runqlat} that separates wakeup latency from preemption latency.
+interference in VM-based latency studies, and a patch, prepared for upstream bcc, that makes
+\texttt{runqlat} separate wakeup latency from preemption latency.
 \end{itemize}
 
 \textbf{Hypotheses.} \textbf{H1}: kernel telemetry aligned to request
