@@ -205,6 +205,8 @@ Environment overrides: `TL_DURATION` (seconds per run, default 15),
 compressed, about 20 GB unpacked, produced by our own experiments. Download:
 https://drive.google.com/drive/folders/1IVK3r3uroNqU_zwaOjeYwiymoN8KJPTw?usp=share_link
 (SHA-256 `668d096981e4fab57d59fcc6694d261638905369f4944c9bea45317d415feda5`).
+The Drive folder holds it as 4 parts; rejoin them with
+`cat tailtag_raw_data.tar.zst.part1 tailtag_raw_data.tar.zst.part2 tailtag_raw_data.tar.zst.part3 tailtag_raw_data.tar.zst.part4 > tailtag_raw_data.tar.zst`.
 Unpack with `zstd -dc tailtag_raw_data.tar.zst | tar -x` and place the
 resulting `raw/` folder as `code/data/raw/` to rerun only the analysis.
 
