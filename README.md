@@ -19,7 +19,7 @@ Submission files (in [dist/](dist/), rebuilt with `make package`):
 
 - [TailTag_report.pdf](dist/TailTag_report.pdf): the 6-page IEEE report
 - [report_latex.zip](dist/report_latex.zip): LaTeX sources of the report
-- [project_code.zip](dist/project_code.zip): code, scripts, analysis, results, docs
+- [project_code.zip](dist/project_code.zip): code, scripts, analysis, results, docs, sample run
 - [CODE_GUIDE.pdf](dist/CODE_GUIDE.pdf): code guide and reproduction instructions
 
 Docs:
@@ -34,6 +34,20 @@ bash scripts/setup_vm.sh && make
 sudo make test                 # 1-minute self-check of the whole pipeline
 sudo bash scripts/run_all.sh   # full reproduction
 ```
+
+## Team & Contributions
+
+> **Draft, to be confirmed by the team.** This list was inferred from the
+> git history (`git log --author=<name> --stat`): it records who committed
+> which files, which may not capture work done together or committed by
+> someone else.
+
+| Member | Roll no. | Areas (from git history) |
+|---|---|---|
+| Yashvanth S | CS24I1029 | Trap-free shared-counter mode (`src/tlat.bpf.c`, `src/tlbench.c`), `src/hiccup.c` noise meter and noise gate; inherited-delay and queue-length analysis, validation and signature analysis (`analysis/analyze.py`), robustness and preempt-fix checks; torn-read and preempt-flag fixes; bcc `runqlat` patch and its test script (`opensource/`); report draft (introduction, related work, methodology) and later results revisions; `docs/REPRODUCE.md`, code guide PDF, smoke test, sample data, README, `make package` and submission files (`dist/`) |
+| Jeevanandham T | CS24I1035 | Initial code base: benchmark (`src/tlbench.c`), eBPF tracer and collector (`src/tlat.bpf.c`, `src/tlat.c`, `src/tlat.h`), stressor (`src/stressor.c`), experiment driver (`scripts/experiment.py`), first analysis pipeline (`analysis/analyze.py`), Makefile and VM setup; learning guide (`docs/LEARN.md`); review findings list (`TODO.md`) |
+| Nithillakrishi PY | CS24I1039 | Report structure and page budget, related work and references (`report/sections/related.tex`, `report/refs.bib`), author block, novelty scoping; detection-table layout (`analysis/make_tables.py`) |
+| Akula Sai Teja | CS24I1054 | Median-of-5 calibration, A/B and receiver-placement experiments; final results and figures (`results/`), table and macro generator (`analysis/make_tables.py`), signature heatmap; report results, abstract and conclusion; first version of the PR description for the bcc patch |
 
 ## Data
 
