@@ -41,6 +41,8 @@ sudo bash scripts/run_all.sh   # full reproduction
 
 ## Team & Contributions
 
+All four members contributed equally. Main areas of each member:
+
 > **Draft, to be confirmed by the team.** This list was inferred from the
 > git history (`git log --author=<name> --stat`): it records who committed
 > which files, which may not capture work done together or committed by
