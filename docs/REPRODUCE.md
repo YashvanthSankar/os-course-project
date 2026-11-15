@@ -42,7 +42,6 @@ data/sample/            one complete raw run, gzip-compressed (in the repo)
 results/                tables (csv), results.json, figures (pdf) produced by analyze.py
 report/                 IEEE LaTeX source of the report
 opensource/             patch for upstream bcc (runqlat --split) + test script
-docs/LEARN.md           background on every concept used (GitHub repository only)
 ```
 
 ## 2. How the pieces fit
