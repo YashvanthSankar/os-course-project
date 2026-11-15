@@ -37,6 +37,9 @@ cp results/fig_*.pdf "$OUT/supplementary/additional_figures/"
 cp results/environment.txt "$OUT/supplementary/other_supporting_materials/measured_machine_environment.txt"
 [ -f opensource/bcc_test_log.txt ] && cp opensource/bcc_test_log.txt "$OUT/supplementary/other_supporting_materials/"
 
+# team-internal helpers and duplicates are not part of the submission
+rm -f "$OUT/code/scripts/measure_pages.py" "$OUT/code/scripts/make_submission.sh" "$OUT/code/opensource/bcc_test_log.txt"
+
 # no caches, virtualenvs, build outputs or OS junk
 find "$OUT" \( -name '__pycache__' -o -name '.venv' -o -name 'build' \) -prune -exec rm -rf {} + 2>/dev/null || true
 find "$OUT" \( -name '.DS_Store' -o -name '*.pyc' \) -delete
